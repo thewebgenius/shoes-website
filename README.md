@@ -13,8 +13,8 @@ A shoe store website. The shopkeeper adds a shoe in the admin panel and approves
 | Admin (`/admin`) | Login and add/edit products. Upload a raw photo, which goes through the processing pipeline. Verify the metadata, then upload a GLB or assign a sample model. From the preview you can Approve & publish or Reject, and later unpublish, archive or restore. Also review moderation, an analytics dashboard and an audit log (admin only). |
 | Approval | Nothing is public until it is approved. Submitting needs a processed image, a 3D model and staff-verified metadata. |
 | Reviews | 1–5 stars, a display name and text. Shows the average, count, distribution and a "helpful" button. Moderation uses a honeypot, a timing token, duplicate detection, a rate limit and abusive-language/spam screening. Every review waits for admin approval. |
-| Try-On Lab | Upload a photo, pick a shoe, and get a result labelled "AI-generated visual preview". The photo is kept in memory only. The result is private, needs a token and is deleted automatically (TTL) or on request. |
-| Find My Shoe | Upload a photo, which is embedded and searched with pgvector (cosine HNSW). Returns the top 5 "visually similar shoes". |
+| Try-On Lab | Upload a photo, pick a shoe, drag it onto your feet and set its size, then get a result labelled "AI-generated visual preview". The photo is kept in memory only. The result is private, needs a token and is deleted automatically (TTL) or on request. |
+| Find My Shoe | Upload a photo, which is embedded and searched with pgvector (cosine HNSW). Returns the top 5 "visually similar shoes", or says plainly that nothing matched when the photo is not a shoe (see the confidence gate below). |
 | Analytics | Tracks product views, 3D interactions, try-on starts and completions, visual searches and reviews. The dashboard lists most viewed, most tried-on, most searched and highest-rated shoes. |
 
 ## Stack
@@ -108,10 +108,10 @@ Every AI capability sits behind an interface in `src/server/ai/types.ts`, and `s
 
 | Capability | Default (MVP) | What the default really does |
 | --- | --- | --- |
-| Image enhancement (`IMAGE_ENHANCEMENT_PROVIDER=local`) | `local-basic-v1` | Removes plain backgrounds by segmentation, normalises, sharpens, upscales with Lanczos, then crops and resizes to 400/800/1200 WebP. **Not AI**. It never invents pixels, so the real shoe is preserved. |
+| Image enhancement (`IMAGE_ENHANCEMENT_PROVIDER=local`) | `local-basic-v1` | Removes plain backgrounds by edge-aware segmentation, normalises, sharpens, upscales with Lanczos, then crops and resizes to transparent 400/800/1200 WebP. **Not AI**. It never invents pixels, so the real shoe is preserved. |
 | Metadata suggestions (`METADATA_PROVIDER=local`) | Local heuristics | Colour from pixels plus a low-confidence shoe-type guess. Category and gender are left empty, so the UI shows **Needs verification**. |
 | 3D generation (`THREE_D_PROVIDER=mock`) | Unavailable | Photo-to-3D is Phase 2. Models are uploaded by the admin, or a sample model is assigned. Labels distinguish *Store-uploaded*, *AI-generated* and *Studio sample* models. |
-| Virtual try-on (`TRYON_PROVIDER=mock`) | Overlay mock | Composites the product image on the photo with the banner "AI-generated visual preview · DEVELOPMENT MOCK". |
+| Virtual try-on (`TRYON_PROVIDER=mock`) | Overlay mock | Composites the product cutout at the position and size the customer dragged it to, with the banner "AI-generated visual preview · DEVELOPMENT MOCK". It does not reshape the shoe to a foot: there is no try-on model, and the customer places it because nothing here finds feet. A real provider receives the same `placement` as a hint and may ignore it. |
 | Embeddings (`EMBEDDING_PROVIDER=local`) | `local-features-v1` | 512-d colour, shape and HOG features. Good enough to rank the seeded catalogue; replace with a vision embedding model for real photos. |
 
 **To connect a real service**, set `<NAME>_PROVIDER=http` with `<NAME>_API_URL` (HTTPS required in production) and `<NAME>_API_KEY`. The generic adapters in `src/server/ai/http/providers.ts` expect this JSON contract (POST, `Authorization: Bearer <key>`):
@@ -149,6 +149,26 @@ Either put a thin gateway in front of a vendor that speaks this contract, or rep
 ## MVP vs Phase 2
 
 **In the MVP:** everything in the table at the top, with mock-first AI as described.
+
+### How background removal keeps white shoes
+
+Colour alone cannot separate a white sole from a white backdrop, so the local
+provider also builds a Sobel edge map and refuses to let the background fill
+cross an outline. The result is written on a **transparent** canvas, and pages
+put a soft `studio` gradient behind it, so pale shoes keep their shape instead
+of dissolving into a white tile. `npx tsx scripts/dev/seg-check.ts <out-dir> <image...>`
+renders cutouts on grey to check this when the pipeline changes.
+
+### The visual-search confidence gate
+
+Any photo has a nearest neighbour in the catalogue, so returning the top 5
+unconditionally presents noise as a result: a photo of a face came back as a
+ranked list of shoes. `visual-search.ts` now requires the best match to score at
+least `MIN_SIMILARITY` (0.8) **and** to beat the runner-up by `MIN_MARGIN`
+(0.06). Otherwise the page says nothing matched and suggests a better photo.
+Calibrate the two constants with `npx tsx scripts/dev/sim-check.ts <image...>`
+after changing the embedding provider; a stronger model will want different
+numbers, and until then a real-world photo of a shoe can fall below the gate.
 
 **Phase 2 (not built):** a real AI background-removal/upscaling model, a vision model for metadata, photo-to-3D generation, a real virtual try-on model, a learned image embedding, object storage/CDN for media, and multi-store support. E-commerce (cart, checkout, inventory), advanced 3D (AR, configurators) and BI tooling are out of scope.
 

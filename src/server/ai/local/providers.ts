@@ -8,9 +8,10 @@ import {
   type MetadataSuggestion,
   type MetadataSuggestionProvider,
   type ThreeDGenerationProvider,
+  type TryOnInput,
   type VirtualTryOnProvider,
 } from "../types";
-import { composeOnWhite, cutoutFromSegmentation, dominantColours, segment } from "./image-ops";
+import { composeOnCanvas, cutoutFromSegmentation, dominantColours, segment } from "./image-ops";
 
 /**
  * Local development providers. None of these call an AI model; they use
@@ -48,8 +49,8 @@ export class LocalImageEnhancementProvider implements ImageEnhancementProvider {
       steps.push({ name: "Upscaling", detail: `Upscaled from ${longest}px with Lanczos resampling (classical, not AI super-resolution).` });
       if (longest < 500) warnings.push("Source photo is low resolution; the result may look soft.");
     }
-    const processed = await composeOnWhite(cutout, 1200);
-    steps.push({ name: "Crop & resize", detail: "Centred on a 1200×1200 white canvas." });
+    const processed = await composeOnCanvas(cutout, 1200);
+    steps.push({ name: "Crop & resize", detail: "Centred on a 1200×1200 transparent canvas." });
     return { processed, cutout, steps, warnings };
   }
 }
@@ -235,13 +236,13 @@ export class MockVirtualTryOnProvider implements VirtualTryOnProvider {
   readonly label = "Development mock (simple overlay, no try-on model configured)";
   readonly isMock = true;
 
-  async tryOn({ personImage, productImage }: { personImage: Buffer; productImage: Buffer; productName: string }) {
+  async tryOn({ personImage, productImage, placement }: TryOnInput) {
     const base = sharp(personImage).rotate().resize(1080, 1440, { fit: "inside", withoutEnlargement: false });
     const baseBuf = await base.jpeg({ quality: 90 }).toBuffer();
     const bm = await sharp(baseBuf).metadata();
     const W = bm.width!;
     const H = bm.height!;
-    const shoeW = Math.round(W * 0.42);
+    const shoeW = Math.max(24, Math.min(W, Math.round(W * placement.scale)));
     const shoe = await sharp(productImage).resize({ width: shoeW, fit: "inside" }).png().toBuffer();
     const sm = await sharp(shoe).metadata();
     const shadow = await sharp(shoe)
@@ -256,8 +257,9 @@ export class MockVirtualTryOnProvider implements VirtualTryOnProvider {
           .png()
           .toBuffer(),
       );
-    const left = Math.round((W - sm.width!) / 2);
-    const top = Math.round(H - sm.height! - H * 0.06);
+    // Centre the shoe on the point the customer chose, kept inside the frame.
+    const left = Math.max(0, Math.min(W - sm.width!, Math.round(placement.x * W - sm.width! / 2)));
+    const top = Math.max(0, Math.min(H - sm.height!, Math.round(placement.y * H - sm.height! / 2)));
     const banner = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Math.round(H * 0.075)}">
         <rect width="100%" height="100%" fill="rgba(17,17,17,0.72)"/>

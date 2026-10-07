@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, Lock, Search, Sparkles, Trash2 } from "lucide-react";
 import { PhotoPicker } from "./photo-picker";
+import { DEFAULT_PLACEMENT, PlaceShoe, type Placement } from "./place-shoe";
 
 export type TryOnProduct = { id: string; slug: string; name: string; category: string; color: string | null; imageId: string | null };
 
@@ -14,6 +15,7 @@ export function TryOnLab({ products, initialSlug }: { products: TryOnProduct[]; 
   const [productId, setProductId] = useState<string | null>(() => products.find((p) => p.slug === initialSlug)?.id ?? null);
   const [query, setQuery] = useState("");
   const [consent, setConsent] = useState(false);
+  const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT);
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -40,6 +42,9 @@ export function TryOnLab({ products, initialSlug }: { products: TryOnProduct[]; 
     fd.set("photo", photo);
     fd.set("productId", productId);
     fd.set("consent", "yes");
+    fd.set("placeX", String(placement.x));
+    fd.set("placeY", String(placement.y));
+    fd.set("placeScale", String(placement.scale));
     try {
       const res = await fetch("/api/try-on", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
@@ -87,7 +92,7 @@ export function TryOnLab({ products, initialSlug }: { products: TryOnProduct[]; 
                 <button
                   type="button"
                   onClick={() => setProductId(p.id)}
-                  className={`w-full rounded-xl bg-white p-1.5 text-left ring-1 transition ${p.id === productId ? "ring-2 ring-gold" : "ring-line hover:ring-ink/30"}`}
+                  className={`studio w-full rounded-xl p-1.5 text-left ring-1 transition ${p.id === productId ? "ring-2 ring-gold" : "ring-line hover:ring-ink/30"}`}
                 >
                   {p.imageId && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -101,9 +106,18 @@ export function TryOnLab({ products, initialSlug }: { products: TryOnProduct[]; 
           </ul>
         </section>
 
-        <section aria-labelledby="step3" className="card p-5">
-          <h2 id="step3" className="mb-3 flex items-center gap-2 font-semibold">
-            <Step n={3} done={status === "done"} /> Generate your preview
+        {photo && selected && (
+          <section aria-labelledby="step3" className="card p-5">
+            <h2 id="step3" className="mb-3 flex items-center gap-2 font-semibold">
+              <Step n={3} done={false} /> Place the shoe
+            </h2>
+            <PlaceShoe photo={photo} shoeImageId={selected.imageId} shoeName={selected.name} placement={placement} onChange={setPlacement} />
+          </section>
+        )}
+
+        <section aria-labelledby="step4" className="card p-5">
+          <h2 id="step4" className="mb-3 flex items-center gap-2 font-semibold">
+            <Step n={4} done={status === "done"} /> Generate your preview
           </h2>
           <label className="flex items-start gap-3 text-sm text-ink-2">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 size-4 accent-[var(--gold)]" />
@@ -155,7 +169,8 @@ export function TryOnLab({ products, initialSlug }: { products: TryOnProduct[]; 
               {result.isMock && (
                 <p className="flex gap-2 rounded-xl bg-warning/10 p-3 text-xs text-warning">
                   <AlertTriangle className="size-4 shrink-0" />
-                  Development preview: no virtual try-on model is connected yet, so this is a simple overlay of the catalogue photo ({result.provider}).
+                  Development preview: no virtual try-on model is connected yet, so this is the catalogue photo overlaid where you placed it ({result.provider}). It does
+                  not reshape the shoe to your foot. Connect a try-on service with TRYON_PROVIDER to replace it.
                 </p>
               )}
               <p className="text-xs text-muted">This is a visual impression only. It does not predict size, fit or comfort.</p>

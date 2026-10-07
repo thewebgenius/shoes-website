@@ -34,6 +34,7 @@ export function FindMyShoe() {
   const [stage, setStage] = useState(0);
   const [matches, setMatches] = useState<Match[]>([]);
   const [isMock, setIsMock] = useState(false);
+  const [noMatch, setNoMatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export function FindMyShoe() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error ?? "Search failed. Please try another photo.");
       setMatches(data.matches);
+      setNoMatch(!!data.noMatch);
       setIsMock(!!data.isMock);
       setStatus("done");
     } catch (e) {
@@ -67,7 +69,7 @@ export function FindMyShoe() {
   return (
     <div className="grid gap-10 lg:grid-cols-[380px_1fr]">
       <div className="space-y-4">
-        <PhotoPicker file={photo} onChange={(f) => { setPhoto(f); setStatus("idle"); setMatches([]); }} hint="Photograph one shoe from the side, on a plain background if you can." />
+        <PhotoPicker file={photo} onChange={(f) => { setPhoto(f); setStatus("idle"); setMatches([]); setNoMatch(false); }} hint="Photograph one shoe from the side, on a plain background if you can." />
         <button type="button" className="btn-gold w-full py-3" onClick={search} disabled={!photo || status === "working"}>
           {status === "working" ? <Loader2 className="size-4 animate-spin" /> : <ScanSearch className="size-4" />}
           {status === "working" ? "Searching…" : "Find visually similar shoes"}
@@ -97,8 +99,8 @@ export function FindMyShoe() {
         {status === "done" && (
           <>
             <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
-              <h2 className="font-display text-2xl font-semibold">Visually similar shoes</h2>
-              <p className="text-xs text-muted">Ranked by visual similarity · top {matches.length}</p>
+              <h2 className="font-display text-2xl font-semibold">{matches.length ? "Visually similar shoes" : "Search result"}</h2>
+              {matches.length > 0 && <p className="text-xs text-muted">Ranked by visual similarity · top {matches.length}</p>}
             </div>
             {isMock && (
               <p className="mb-5 flex gap-2 rounded-xl bg-warning/10 p-3 text-xs text-warning">
@@ -106,7 +108,21 @@ export function FindMyShoe() {
               </p>
             )}
             {matches.length === 0 ? (
-              <p className="text-muted">We couldn’t find anything similar in the catalogue.</p>
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-line">
+                <p className="flex gap-2 font-semibold">
+                  <AlertTriangle className="size-5 shrink-0 text-warning" /> No shoe matched this photo
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  {noMatch
+                    ? "Nothing in the catalogue resembles this picture closely enough to show. If the photo is of something other than a shoe, or the shoe is small in the frame, that is the usual reason."
+                    : "We couldn’t find anything similar in the catalogue."}
+                </p>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
+                  <li>Photograph a single shoe from the side.</li>
+                  <li>Fill most of the frame with the shoe.</li>
+                  <li>Use a plain, well-lit background.</li>
+                </ul>
+              </div>
             ) : (
               <ol className="space-y-3">
                 {matches.map((m) => {
@@ -114,7 +130,7 @@ export function FindMyShoe() {
                   return (
                     <li key={m.id} className="flex gap-4 rounded-2xl bg-white p-3 ring-1 ring-line sm:items-center">
                       <span className="hidden w-6 text-center font-display text-lg text-muted sm:block">{m.rank}</span>
-                      <Link href={`/products/${m.slug}`} className="size-24 shrink-0 overflow-hidden rounded-xl bg-paper-2 sm:size-28">
+                      <Link href={`/products/${m.slug}`} className="studio size-24 shrink-0 overflow-hidden rounded-xl sm:size-28">
                         {m.image && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={`/api/media/image/${m.image.id}/400`} alt={m.image.alt} className="size-full object-contain p-1" />

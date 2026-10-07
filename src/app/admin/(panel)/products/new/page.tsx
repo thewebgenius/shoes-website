@@ -10,7 +10,9 @@ export default async function NewProductPage() {
         ← Products
       </Link>
       <h1 className="font-display mt-3 text-3xl font-semibold">Add a shoe</h1>
-      <p className="mt-1 text-sm text-muted">Start with a name and section. You’ll upload the photo and 3D model next. Nothing is public until you approve it.</p>
+      <p className="mt-1 text-sm text-muted">
+        Start with a name and section. Saving this takes you straight to the photo upload, then the 3D model. Nothing is public until you approve it.
+      </p>
       <div className="card mt-6 p-6">
         <ProductForm mode="create" />
       </div>

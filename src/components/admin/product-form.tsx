@@ -97,7 +97,7 @@ export function ProductForm({ values, suggestions, mode }: { values?: Values; su
         </p>
       )}
       <button type="submit" className="btn-primary" disabled={pending}>
-        {pending ? "Saving…" : mode === "create" ? "Create draft & continue" : "Save details"}
+        {pending ? "Saving…" : mode === "create" ? "Create draft & add photo" : "Save details"}
       </button>
     </form>
   );

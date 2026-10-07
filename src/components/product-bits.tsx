@@ -91,7 +91,7 @@ export type CardData = {
 export function ProductCard({ p, priority = false }: { p: CardData; priority?: boolean }) {
   return (
     <Link href={`/products/${p.slug}`} className="group block" prefetch={false}>
-      <div className="relative aspect-square overflow-hidden rounded-2xl bg-white ring-1 ring-line transition group-hover:ring-ink/30">
+      <div className="relative aspect-square overflow-hidden rounded-2xl studio ring-1 ring-line transition group-hover:ring-ink/30">
         <ProductImage image={p.image} priority={priority} className="size-full object-contain p-4 transition-transform duration-500 group-hover:scale-[1.04]" />
         {p.model && (
           <span className="absolute top-3 left-3 rounded-full bg-ink/85 px-2.5 py-1 text-[10px] font-semibold tracking-widest text-paper uppercase">3D</span>

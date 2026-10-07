@@ -14,7 +14,7 @@ test("shopkeeper adds a shoe and it appears in the showroom only after approval"
   await page.goto("/admin/products/new");
   await page.getByLabel("Name").fill(name);
   await page.getByLabel("Category (showroom section)").selectOption("men");
-  await page.getByRole("button", { name: "Create draft & continue" }).click();
+  await page.getByRole("button", { name: "Create draft & add photo" }).click();
   await expect(page).toHaveURL(/\/admin\/products\/[0-9a-f-]{36}\?created=1/);
   const productUrl = page.url().split("?")[0];
   const productId = productUrl.split("/").pop()!;
@@ -38,9 +38,11 @@ test("shopkeeper adds a shoe and it appears in the showroom only after approval"
   await expect(page.getByText("Needs verification").first()).toBeVisible();
 
   // Verify metadata
-  await page.getByLabel("Shoe type").fill("Hiking boot");
-  await page.getByLabel("Colour").fill("Stone / Olive");
-  await page.getByLabel("Description").fill("A rugged hiker used in automated tests.");
+  // Next keeps the outgoing page in a display:none holder after the redirect, so
+  // match the form the shopkeeper can actually see.
+  await page.locator("#shoeType").locator("visible=true").fill("Hiking boot");
+  await page.locator("#color").locator("visible=true").fill("Stone / Olive");
+  await page.locator("#description").locator("visible=true").fill("A rugged hiker used in automated tests.");
   await page.getByRole("checkbox", { name: /I have checked these details/ }).check();
   await page.getByRole("button", { name: "Save details" }).click();
   await expect(page.getByText("Saved. Metadata marked as verified.")).toBeVisible();
@@ -91,7 +93,7 @@ test("rejecting a submitted shoe keeps it private and records the reason", async
   await page.goto("/admin/products/new");
   await page.getByLabel("Name").fill(name);
   await page.getByLabel("Category (showroom section)").selectOption("kids");
-  await page.getByRole("button", { name: "Create draft & continue" }).click();
+  await page.getByRole("button", { name: "Create draft & add photo" }).click();
   await page.getByTestId("raw-image-input").setInputFiles(FIX("raw-shoe.jpg"));
   await expect(page.getByText(/Photo processed|Processed with warnings/)).toBeVisible({ timeout: 60_000 });
   await page.locator("select#sample").selectOption("kids-high-lime");

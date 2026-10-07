@@ -18,7 +18,12 @@ export async function POST(req: Request) {
     const { file, form } = await readFormFile(req, "photo", env().MAX_IMAGE_UPLOAD_MB * 1024 * 1024);
     if (form.get("consent") !== "yes") throw new UploadError("Please confirm you agree to temporary processing of your photo.");
     const photo = await validateImageUpload(file);
-    const result = await runTryOn({ productId: String(form.get("productId") ?? ""), photo, ipHash });
+    const result = await runTryOn({
+      productId: String(form.get("productId") ?? ""),
+      photo,
+      ipHash,
+      placement: { x: form.get("placeX"), y: form.get("placeY"), scale: form.get("placeScale") },
+    });
     if (!result.ok) return jsonError(result.status, result.error);
 
     const jar = await cookies();

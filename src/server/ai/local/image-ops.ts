@@ -26,6 +26,21 @@ function dist(r1: number, g1: number, b1: number, r2: number, g2: number, b2: nu
   return Math.sqrt(dr * dr * 0.9 + dg * dg * 1.2 + db * db * 0.9);
 }
 
+/** Sobel gradient magnitude of the (slightly blurred) greyscale image, at analysis size. */
+async function gradientMagnitude(input: Buffer, w: number, h: number): Promise<Float32Array> {
+  const grey = await sharp(input).resize(w, h, { fit: "fill" }).removeAlpha().greyscale().blur(0.8).raw().toBuffer();
+  const out = new Float32Array(w * h);
+  const at = (x: number, y: number) => grey[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const gx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+      const gy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      out[y * w + x] = Math.sqrt(gx * gx + gy * gy) / 4;
+    }
+  }
+  return out;
+}
+
 export async function segment(input: Buffer): Promise<Segmentation> {
   const meta = await sharp(input).metadata();
   const ow = meta.width ?? 1;
@@ -63,6 +78,13 @@ export async function segment(input: Buffer): Promise<Segmentation> {
     const med = (a: number[]) => a.sort((p, q) => p - q)[Math.floor(a.length / 2)];
     bg = [med(rs), med(gs), med(bs)];
 
+    // Edge map. A white sole against a white backdrop is the same colour as the
+    // background, so colour alone would flood straight through it; the outline
+    // (contact shadow, antialiasing, material change) is what separates them.
+    // The fill may not cross a pixel whose gradient is above the threshold.
+    const edge = await gradientMagnitude(input, w, h);
+    const T_EDGE = 11;
+
     // Flood fill the background from the border. A pixel joins if it is close
     // to the global background colour, or close to its already-filled neighbour
     // (follows soft gradients and shadows) without drifting too far.
@@ -91,6 +113,7 @@ export async function segment(input: Buffer): Promise<Segmentation> {
       for (const q of nbrs) {
         if (q < 0 || visited[q]) continue;
         const j = q * 4;
+        if (edge[q] > T_EDGE) continue;
         const dg = dist(data[j], data[j + 1], data[j + 2], ...bg);
         const dl = dist(data[j], data[j + 1], data[j + 2], data[i], data[i + 1], data[i + 2]);
         if (dg < T_GLOBAL || (dl < T_LOCAL && dg < T_DRIFT)) {
@@ -199,12 +222,16 @@ export async function cutoutFromSegmentation(input: Buffer, seg: Segmentation): 
     .toBuffer();
 }
 
-/** Places a cutout centred on a white square canvas, the way catalogue photos are framed. */
-export async function composeOnWhite(cutout: Buffer, size = 1200, fill = 0.86): Promise<Buffer> {
+/**
+ * Centres a cutout on a square canvas, the way catalogue photos are framed.
+ * The canvas is transparent, so a white shoe keeps its shape against whatever
+ * the page puts behind it instead of dissolving into a white tile.
+ */
+export async function composeOnCanvas(cutout: Buffer, size = 1200, fill = 0.86): Promise<Buffer> {
   const inner = Math.round(size * fill);
   const resized = await sharp(cutout).resize(inner, inner, { fit: "inside", kernel: "lanczos3" }).png().toBuffer();
   const m = await sharp(resized).metadata();
-  return sharp({ create: { width: size, height: size, channels: 3, background: "#ffffff" } })
+  return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: resized, left: Math.round((size - m.width!) / 2), top: Math.round((size - m.height!) / 2) }])
     .png()
     .toBuffer();

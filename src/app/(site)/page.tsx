@@ -122,7 +122,7 @@ async function SectionTiles() {
         const pick = items.find((p) => p.category === c.key);
         return (
           <Link key={c.key} href={`/${c.key}`} className="group relative overflow-hidden rounded-3xl bg-white ring-1 ring-line">
-            <div className="aspect-[4/3]">
+            <div className="studio aspect-[4/3]">
               {pick && <ProductImage image={pick.image} sizes="(min-width: 768px) 33vw, 100vw" className="size-full object-contain p-6 transition duration-500 group-hover:scale-105" />}
             </div>
             <div className="flex items-end justify-between border-t border-line p-5">

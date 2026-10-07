@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     return Response.json(
       {
         ok: true,
+        noMatch: result.noMatch,
         isMock: result.isMock,
         provider: result.providerLabel,
         matches: result.matches.map((m) => ({

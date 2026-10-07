@@ -80,6 +80,16 @@ body {
     @apply px-3.5 py-1.5 text-xs;
 }
 
+/*
+ * Product photography is shot on white, so a white tile makes white soles and
+ * pale uppers disappear at the edges. A soft warm backdrop with a light vignette
+ * gives every shoe an outline to sit against without tinting the shoe itself.
+ */
+@utility studio {
+    background:
+        radial-gradient(118% 92% at 50% 16%, #ffffff 0%, #fbf8f4 52%, #efe9e0 100%);
+}
+
 @utility card {
     @apply rounded-2xl border border-line bg-white;
 }

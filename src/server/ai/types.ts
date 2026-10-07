@@ -65,12 +65,23 @@ export interface ThreeDGenerationProvider extends ProviderInfo {
 
 // --- Virtual try-on ----------------------------------------------------------
 
+/**
+ * Where the customer asked for the shoe to appear, as fractions of the photo:
+ * `x`/`y` are the centre of the shoe and `scale` is its width. A real try-on
+ * model is free to treat this as a hint; the development mock composites there
+ * exactly, which is why the customer is the one who positions it.
+ */
+export type TryOnPlacement = { x: number; y: number; scale: number };
+
+export const DEFAULT_PLACEMENT: TryOnPlacement = { x: 0.5, y: 0.88, scale: 0.42 };
+
 export type TryOnInput = {
   /** Customer photo, already validated and stripped of metadata. Never persisted. */
   personImage: Buffer;
   /** Product cutout with transparent background. */
   productImage: Buffer;
   productName: string;
+  placement: TryOnPlacement;
 };
 
 export interface VirtualTryOnProvider extends ProviderInfo {

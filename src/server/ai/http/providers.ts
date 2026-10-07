@@ -7,6 +7,7 @@ import {
   type MetadataSuggestion,
   type MetadataSuggestionProvider,
   type ThreeDGenerationProvider,
+  type TryOnInput,
   type VirtualTryOnProvider,
 } from "../types";
 
@@ -22,7 +23,7 @@ import {
  *   enhancement  { image }                         -> { processed, cutout, steps?, warnings? }
  *   metadata     { image }                         -> MetadataSuggestion
  *   3d           { images[], productName }         -> { glb }
- *   tryon        { personImage, productImage, productName } -> { image }
+ *   tryon        { personImage, productImage, productName, placement } -> { image }
  *   embedding    { image }                         -> { embedding: number[512], model }
  */
 
@@ -98,12 +99,15 @@ export class HttpVirtualTryOnProvider implements VirtualTryOnProvider {
   readonly label = "External virtual try-on service";
   readonly isMock = false;
   constructor(private url?: string, private key?: string) {}
-  async tryOn(input: { personImage: Buffer; productImage: Buffer; productName: string }) {
+  async tryOn(input: TryOnInput) {
     // The photo is sent in the request body only; it is never written to disk or exposed by URL.
     const r = await call<{ image: string }>(this.url, this.key, {
       personImage: b64(input.personImage),
       productImage: b64(input.productImage),
       productName: input.productName,
+      // Where the customer put the shoe, as fractions of the photo. A model that
+      // places the shoe itself can ignore this.
+      placement: input.placement,
       // Ask the provider not to retain or train on customer images.
       retention: "none",
       allowTraining: false,

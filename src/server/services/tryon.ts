@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db/client";
 import { productImages, products, tryonSessions } from "../db/schema";
 import { aiProviders } from "../ai/registry";
+import { DEFAULT_PLACEMENT } from "../ai/types";
 import { env } from "../env";
 import { randomToken, safeEqual, sha256 } from "../security/crypto";
 import { storage, storageKeys } from "../storage";
@@ -25,7 +26,13 @@ export type TryOnOutcome =
   | { ok: true; sessionId: string; token: string; expiresAt: Date; isMock: boolean; providerLabel: string }
   | { ok: false; error: string; status: number };
 
-export async function runTryOn(opts: { productId: string; photo: ValidatedImage; ipHash: string }): Promise<TryOnOutcome> {
+const placementSchema = z.object({
+  x: z.coerce.number().min(0).max(1).catch(DEFAULT_PLACEMENT.x),
+  y: z.coerce.number().min(0).max(1).catch(DEFAULT_PLACEMENT.y),
+  scale: z.coerce.number().min(0.08).max(1).catch(DEFAULT_PLACEMENT.scale),
+});
+
+export async function runTryOn(opts: { productId: string; photo: ValidatedImage; ipHash: string; placement?: unknown }): Promise<TryOnOutcome> {
   if (!z.string().uuid().safeParse(opts.productId).success) return { ok: false, error: "Choose a shoe from the catalogue.", status: 400 };
   const [row] = await db
     .select({ p: products, img: productImages })
@@ -45,7 +52,8 @@ export async function runTryOn(opts: { productId: string; photo: ValidatedImage;
   let personImage: Buffer | null = opts.photo.buffer;
   try {
     const productImage = await storage().get(storageKeys.cutout(row.p.id, row.img.id));
-    const { image } = await provider.tryOn({ personImage, productImage, productName: row.p.name });
+    const placement = placementSchema.parse(opts.placement ?? DEFAULT_PLACEMENT);
+    const { image } = await provider.tryOn({ personImage, productImage, productName: row.p.name, placement });
     const token = randomToken(24);
     const key = storageKeys.tryonResult(session.id);
     await storage().put(key, image);

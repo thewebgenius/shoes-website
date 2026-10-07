@@ -64,7 +64,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
       </div>
 
       <DoneBanner done={sp.done} />
-      {sp.created && <p className="mt-4 rounded-xl bg-success/10 px-4 py-2 text-sm text-success">Draft created. Upload a raw photo to continue.</p>}
+      {sp.created && <p className="mt-4 rounded-xl bg-success/10 px-4 py-2 text-sm text-success">Draft created. Upload a photo of the shoe below to continue.</p>}
       {p.status === "rejected" && p.rejectionReason && (
         <p className="mt-4 flex gap-2 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" /> Rejected: {p.rejectionReason}
@@ -83,9 +83,9 @@ export default async function EditProductPage({ params, searchParams }: PageProp
       </ol>
 
       {/* 1. Photos */}
-      <section className="card mt-6 p-5 sm:p-6" aria-labelledby="photos">
+      <section id="photos" className={`card mt-6 scroll-mt-24 p-5 sm:p-6 ${processed.length === 0 ? "border-gold ring-2 ring-gold/25" : ""}`} aria-labelledby="photos">
         <h2 id="photos" className="text-lg font-semibold">
-          1 · Product photo
+          1 · Product photo {processed.length === 0 && <span className="ml-1 text-sm font-normal text-gold">— start here</span>}
         </h2>
         <p className="mt-1 text-sm text-muted">
           Raw photo → background removal → enhancement/upscaling → crop &amp; resize → product image. Processor: <strong>{providers.imageEnhancement.label}</strong>

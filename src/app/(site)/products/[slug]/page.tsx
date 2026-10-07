@@ -66,13 +66,13 @@ async function Product({ params }: { params: PageProps<"/products/[slug]">["para
             {p.model ? (
               <LazyProductViewer modelUrl={modelUrl(p.model.id)} productId={p.id} name={p.name} poster={poster} />
             ) : (
-              <div className="size-full bg-white">{poster}</div>
+              <div className="studio size-full">{poster}</div>
             )}
           </div>
           {images.length > 0 && (
             <ul className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Product photos">
               {images.map((img) => (
-                <li key={img.id} className="aspect-square overflow-hidden rounded-xl bg-white ring-1 ring-line">
+                <li key={img.id} className="studio aspect-square overflow-hidden rounded-xl ring-1 ring-line">
                   <a href={`/api/media/image/${img.id}/1200`} target="_blank" rel="noopener" aria-label={`Open photo: ${img.alt ?? p.name}`}>
                     <ProductImage image={{ id: img.id, variants: img.variants ?? [400], alt: img.alt ?? p.name }} sizes="120px" className="size-full object-contain p-1.5" />
                   </a>

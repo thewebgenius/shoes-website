@@ -33,13 +33,15 @@ const schema = z.object({
   THREE_D_API_KEY: z.string().optional(),
   TRYON_PROVIDER: choice(["none", "fashn", "http", "mock"], "none"),
   TRYON_API_URL: z.string().optional(),
+  /** FASHN output resolution. 2k is HD portrait quality; 4k costs more credits. */
+  TRYON_RESOLUTION: choice(["1k", "2k", "4k"], "2k"),
   VIRTUAL_TRYON_API_KEY: z.string().optional(),
   /** Older name for VIRTUAL_TRYON_API_KEY. */
   TRYON_API_KEY: z.string().optional(),
   EMBEDDING_PROVIDER: choice(["local", "http"], "local"),
   EMBEDDING_API_URL: z.string().optional(),
   EMBEDDING_API_KEY: z.string().optional(),
-  /** Development mocks are refused in production builds unless this is true (used by the E2E suite). */
+  /** Development mocks are refused unless this is true (used by the E2E suite only). */
   AI_ALLOW_MOCK_PROVIDERS: bool,
 
   MAX_IMAGE_UPLOAD_MB: z.coerce.number().positive().max(50).default(10),

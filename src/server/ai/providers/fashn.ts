@@ -22,14 +22,14 @@ import type { TryOnInput, VirtualTryOnProvider } from "../types";
  * request finishes. FASHN does not train on customer content unless the
  * account opts in.
  *
- * Cost: "balanced" at 1k is the default here (see the FASHN pricing page for credits per run).
+ * Quality: "balanced" mode at 2k (HD) by default; TRYON_RESOLUTION picks 1k/2k/4k.
+ * Credits per run grow with resolution (see the FASHN pricing page).
  */
 
 const BASE = "https://api.fashn.ai/v1";
 const MODEL = "tryon-max";
-const RESOLUTION = "1k";
 const MODE = "balanced";
-const PERSON_MAX_EDGE = 2048;
+const PERSON_MAX_EDGE = 2560;
 const PRODUCT_MAX_EDGE = 1200;
 const POLL_EVERY_MS = 2500;
 const OVERALL_TIMEOUT_MS = 180_000;
@@ -65,7 +65,7 @@ export class FashnVirtualTryOnProvider implements VirtualTryOnProvider {
 
   constructor(
     private apiKey?: string,
-    private opts: { pollEveryMs?: number; timeoutMs?: number } = {},
+    private opts: { pollEveryMs?: number; timeoutMs?: number; resolution?: "1k" | "2k" | "4k" } = {},
   ) {
     this.configured = !!apiKey;
     if (!apiKey) this.notConfiguredReason = "Set VIRTUAL_TRYON_API_KEY to your FASHN API key.";
@@ -104,7 +104,7 @@ export class FashnVirtualTryOnProvider implements VirtualTryOnProvider {
               model_image: toDataUri(person, "image/jpeg"),
               product_image: toDataUri(product, "image/jpeg"),
               prompt: FOOTWEAR_PROMPT,
-              resolution: RESOLUTION,
+              resolution: this.opts.resolution ?? "2k",
               generation_mode: MODE,
               num_images: 1,
               output_format: "jpeg",

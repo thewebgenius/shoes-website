@@ -215,7 +215,7 @@ export function TryOnLab({ products, initialSlug, provider }: { products: TryOnP
             </div>
           ) : (
             <div className="space-y-3">
-              <PhotoPicker file={file} onChange={setFile} captureMode="environment" hint="Feet only, lower body or full body all work. Make sure your shoes are visible." />
+              <PhotoPicker file={file} onChange={setFile} captureMode="environment" hint="Your feet must be in the photo: feet only, lower body or full body. A waist-up selfie cannot show shoes." />
               <label className="flex items-start gap-3 text-sm text-ink-2">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 size-4 accent-[var(--gold)]" />
                 <span>

@@ -14,6 +14,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db/migrate.ts",
     "db:seed": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/db/seed.ts",
     "user:create": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/db/create-user.ts",
+    "ai:check": "tsx --env-file-if-exists=.env.local scripts/dev/ai-check.ts",
     "assets:models": "tsx scripts/assets/bake-khronos-shoe.ts && tsx scripts/assets/generate-shoe-models.ts",
     "assets:render": "tsx scripts/assets/render-previews.ts"
   },

@@ -53,7 +53,7 @@ const placementSchema = z.object({
 });
 
 const ACTIVE = ["queued", "processing", "retrying"] as const;
-const PHOTO_MAX_EDGE = 2048;
+const PHOTO_MAX_EDGE = 2560;
 const STALE_MINUTES = 10;
 
 // ---------------------------------------------------------------------------

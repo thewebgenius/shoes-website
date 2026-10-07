@@ -16,6 +16,7 @@ const base = {
   METADATA_MODEL: "claude-sonnet-5-5",
   THREE_D_PROVIDER: "none",
   TRYON_PROVIDER: "none",
+  TRYON_RESOLUTION: "2k",
   EMBEDDING_PROVIDER: "local",
   AI_ALLOW_MOCK_PROVIDERS: false,
   MAX_IMAGE_UPLOAD_MB: 10,
@@ -64,8 +65,17 @@ describe("provider registry", () => {
     expect(p.tryOn.usesPlacement).toBe(false);
   });
 
-  it("uses development mocks only when asked for by name, and labels them", () => {
-    const p = buildProviders({ ...base, IMAGE_ENHANCEMENT_PROVIDER: "mock", METADATA_PROVIDER: "local", TRYON_PROVIDER: "mock" });
+  it("ignores old mock settings unless AI_ALLOW_MOCK_PROVIDERS=true, even in development", () => {
+    const p = buildProviders({ ...base, IMAGE_ENHANCEMENT_PROVIDER: "local", METADATA_PROVIDER: "local", TRYON_PROVIDER: "mock" });
+    for (const prov of [p.imageEnhancement, p.metadata, p.tryOn]) {
+      expect(prov.configured).toBe(false);
+      expect(prov.notConfiguredReason).toMatch(/switched off/);
+    }
+    expect(p.tryOn.notConfiguredReason).toMatch(/TRYON_PROVIDER=fashn/);
+  });
+
+  it("uses development mocks only when explicitly allowed and named, and labels them", () => {
+    const p = buildProviders({ ...base, AI_ALLOW_MOCK_PROVIDERS: true, IMAGE_ENHANCEMENT_PROVIDER: "mock", METADATA_PROVIDER: "local", TRYON_PROVIDER: "mock" });
     for (const prov of [p.imageEnhancement, p.metadata, p.tryOn]) {
       expect(prov.kind).toBe("mock");
       expect(prov.label).toMatch(/Development mock \(not AI\)/);
@@ -77,7 +87,7 @@ describe("provider registry", () => {
     const refused = buildProviders(prod);
     expect(refused.imageEnhancement.configured).toBe(false);
     expect(refused.tryOn.configured).toBe(false);
-    expect(refused.tryOn.notConfiguredReason).toMatch(/disabled in production/);
+    expect(refused.tryOn.notConfiguredReason).toMatch(/switched off/);
     const allowed = buildProviders({ ...prod, AI_ALLOW_MOCK_PROVIDERS: true });
     expect(allowed.tryOn.kind).toBe("mock");
   });

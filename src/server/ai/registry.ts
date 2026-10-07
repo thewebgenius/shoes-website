@@ -30,7 +30,8 @@ export type AiProviders = {
   moderation: ModerationProvider;
 };
 
-const MOCKS_REFUSED = "Development mocks are disabled in production. Configure a real provider (or set AI_ALLOW_MOCK_PROVIDERS=true for testing only).";
+/** Mocks are off unless AI_ALLOW_MOCK_PROVIDERS=true, so an old `*_PROVIDER=mock|local` line can't keep the overlay running. */
+const mockRefused = (setup: string) => `Development mocks are switched off. ${setup}`;
 
 /**
  * Chooses each provider from configuration. Nothing falls back silently:
@@ -38,7 +39,10 @@ const MOCKS_REFUSED = "Development mocks are disabled in production. Configure a
  * development mock is used only when asked for by name.
  */
 export function buildProviders(e: Env): AiProviders {
-  const mocksAllowed = e.NODE_ENV !== "production" || e.AI_ALLOW_MOCK_PROVIDERS;
+  const mocksAllowed = e.AI_ALLOW_MOCK_PROVIDERS;
+  const IMG = "Set IMAGE_ENHANCEMENT_PROVIDER=photoroom and IMAGE_ENHANCEMENT_API_KEY in .env.local, then restart.";
+  const META = "Set METADATA_PROVIDER=anthropic and METADATA_API_KEY in .env.local, then restart.";
+  const TRY = "Set TRYON_PROVIDER=fashn and VIRTUAL_TRYON_API_KEY in .env.local, then restart.";
 
   const imageEnhancement = ((): ImageEnhancementProvider => {
     switch (e.IMAGE_ENHANCEMENT_PROVIDER) {
@@ -48,9 +52,9 @@ export function buildProviders(e: Env): AiProviders {
         return new HttpImageEnhancementProvider(e.IMAGE_ENHANCEMENT_API_URL, e.IMAGE_ENHANCEMENT_API_KEY);
       case "mock":
       case "local":
-        return mocksAllowed ? new LocalImageEnhancementProvider() : new NotConfiguredImageEnhancement("mock-refused", MOCKS_REFUSED);
+        return mocksAllowed ? new LocalImageEnhancementProvider() : new NotConfiguredImageEnhancement("mock-refused", mockRefused(IMG));
       default:
-        return new NotConfiguredImageEnhancement("none", "Set IMAGE_ENHANCEMENT_PROVIDER=photoroom and IMAGE_ENHANCEMENT_API_KEY.");
+        return new NotConfiguredImageEnhancement("none", IMG);
     }
   })();
 
@@ -62,9 +66,9 @@ export function buildProviders(e: Env): AiProviders {
         return new HttpMetadataProvider(e.METADATA_API_URL, e.METADATA_API_KEY);
       case "mock":
       case "local":
-        return mocksAllowed ? new LocalMetadataProvider() : new NotConfiguredMetadata("mock-refused", MOCKS_REFUSED);
+        return mocksAllowed ? new LocalMetadataProvider() : new NotConfiguredMetadata("mock-refused", mockRefused(META));
       default:
-        return new NotConfiguredMetadata("none", "Set METADATA_PROVIDER=anthropic and METADATA_API_KEY.");
+        return new NotConfiguredMetadata("none", META);
     }
   })();
 
@@ -72,13 +76,13 @@ export function buildProviders(e: Env): AiProviders {
   const tryOn = ((): VirtualTryOnProvider => {
     switch (e.TRYON_PROVIDER) {
       case "fashn":
-        return new FashnVirtualTryOnProvider(tryOnKey);
+        return new FashnVirtualTryOnProvider(tryOnKey, { resolution: e.TRYON_RESOLUTION });
       case "http":
         return new HttpVirtualTryOnProvider(e.TRYON_API_URL, tryOnKey);
       case "mock":
-        return mocksAllowed ? new MockVirtualTryOnProvider() : new NotConfiguredTryOn("mock-refused", MOCKS_REFUSED);
+        return mocksAllowed ? new MockVirtualTryOnProvider() : new NotConfiguredTryOn("mock-refused", mockRefused(TRY));
       default:
-        return new NotConfiguredTryOn("none", "Set TRYON_PROVIDER=fashn and VIRTUAL_TRYON_API_KEY.");
+        return new NotConfiguredTryOn("none", TRY);
     }
   })();
 

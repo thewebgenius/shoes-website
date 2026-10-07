@@ -74,8 +74,9 @@ All variables are documented in `.env.example`. Secrets live only in `.env.local
 | `IMAGE_ENHANCEMENT_PROVIDER`, `IMAGE_ENHANCEMENT_API_KEY` | Background removal: `photoroom` + your Photoroom key |
 | `METADATA_PROVIDER`, `METADATA_API_KEY`, `METADATA_MODEL` | Metadata suggestions: `anthropic` + your Anthropic key (model defaults to `claude-sonnet-5-5`) |
 | `TRYON_PROVIDER`, `VIRTUAL_TRYON_API_KEY` | Virtual try-on: `fashn` + your FASHN key |
+| `TRYON_RESOLUTION` | Size of the generated try-on photo: `1k`, `2k` (HD, default) or `4k` |
 | `EMBEDDING_PROVIDER` | Find My Shoe similarity: `local` (default, not AI) or `http` |
-| `AI_ALLOW_MOCK_PROVIDERS` | Testing only: allows `*_PROVIDER=mock` in a production build |
+| `AI_ALLOW_MOCK_PROVIDERS` | Testing only: without it every `*_PROVIDER=mock` or `local` setting is ignored and shows "AI provider not configured" |
 | `MAX_IMAGE_UPLOAD_MB`, `MAX_MODEL_UPLOAD_MB` | Upload limits |
 | `TRYON_RESULT_TTL_MINUTES` | Minutes a customer try-on photo and its previews are kept (default 30) |
 
@@ -150,8 +151,8 @@ Restart `npm run dev` (or `npm start`) after changing them. In production set th
 
 - **Photoroom**: one Image Editing call per new photo. The same photo uploaded twice for a shoe is detected by its SHA-256 hash and not sent again; "Retry processing" is a deliberate click.
 - **Claude**: one call per processed photo (about 2 images + a short prompt).
-- **FASHN**: `balanced` mode at `1k` resolution per preview. A preview is generated only when the customer clicks Generate; the same photo and shoe in one visit reuse the earlier result. Try-on is rate limited (10 generations and 20 photo uploads per visitor per hour).
-- Photos are compressed before sending: product photos to ≤2500 px JPEG, customer photos to ≤2048 px, metadata images to ≤1280 px.
+- **FASHN**: `balanced` mode at `2k` (HD) resolution per preview by default; `TRYON_RESOLUTION=1k` is cheaper and `4k` costs more. A preview is generated only when the customer clicks Generate; the same photo and shoe in one visit reuse the earlier result. Try-on is rate limited (10 generations and 20 photo uploads per visitor per hour).
+- Photos are compressed before sending: product photos to ≤2500 px JPEG, customer photos to ≤2560 px, metadata images to ≤1280 px.
 
 ### How each flow works
 
@@ -184,7 +185,7 @@ Claude returns `shoeType`, `category` (men/women/kids), `gender`, `color`, `seco
 ### Not configured, and development mocks
 
 - With no provider set, every AI feature shows **"AI provider not configured"** and nothing is faked: uploads are kept but not processed, no suggestions or confidence appear, and the Try-On Lab says try-on isn't available.
-- For offline development you can opt in to mocks by name: `IMAGE_ENHANCEMENT_PROVIDER=mock`, `METADATA_PROVIDER=mock`, `TRYON_PROVIDER=mock`. Every mock result is labelled **"Development mock (not AI)"**. A production build refuses mocks unless `AI_ALLOW_MOCK_PROVIDERS=true` (only the E2E suite sets this).
+- For offline development you can opt in to mocks by name: `IMAGE_ENHANCEMENT_PROVIDER=mock`, `METADATA_PROVIDER=mock`, `TRYON_PROVIDER=mock`. Every mock result is labelled **"Development mock (not AI)"**. Mocks are refused in every environment unless `AI_ALLOW_MOCK_PROVIDERS=true` is also set (only the E2E suite sets this), so an old mock line in `.env.local` can never bring the overlay back.
 - The old value `local` still means `mock`.
 
 ### Architecture
@@ -214,6 +215,8 @@ embedding    { image }                                    -> { embedding: number
 
 The automated tests check our side of each integration against the documented request and response formats, and one test calls the real Anthropic API with a deliberately invalid key to check the error handling. They cannot judge the providers' output quality. After adding keys:
 
+0. Run `npm run ai:check`. It makes one free, read-only request per provider and prints OK or the exact problem, without printing any key.
+
 1. Admin → Add product → upload a real photo (for example a shoe held in a hand on a floor). Expect "AI processing completed" and a clean transparent cutout, or "needs review" with the reason.
 2. Check the metadata suggestions show "AI suggestions · Source: Claude vision (…)".
 3. Publish a test shoe, open the Try-On Lab and try a feet-only photo, a lower-body photo and a full-body photo. Check that the framing is kept and that switching shoes needs no new upload.
@@ -228,8 +231,9 @@ The automated tests check our side of each integration against the documented re
 | "The AI provider is busy" / Retrying… | Rate limit or a temporary outage; the app retries twice automatically, then shows Retry. |
 | Watermark on product images | You are using a Photoroom `sandbox_` key. Use a live key. |
 | Metadata "model … not found" | `METADATA_MODEL` names a model your Anthropic account can't use; remove it to use the default. |
+| Try-on preview shows no shoes | The customer photo does not show the feet (for example a waist-up selfie). Use a feet-only, lower-body or full-body photo. |
 | A job stays "Processing…" after a restart | Jobs interrupted by a restart are marked failed after 15 minutes; click Retry processing. |
-| "Development mock (not AI)" in production | A `*_PROVIDER=mock` is set together with `AI_ALLOW_MOCK_PROVIDERS=true`. Remove both. |
+| "Development mock (not AI)" anywhere | A `*_PROVIDER=mock` is set together with `AI_ALLOW_MOCK_PROVIDERS=true`. Remove both. |
 
 ## Security summary
 

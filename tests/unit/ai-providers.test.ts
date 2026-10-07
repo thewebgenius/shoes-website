@@ -278,7 +278,7 @@ describe("FASHN Try-On Max", () => {
     expect(out.width! / out.height!).toBeCloseTo(w / h, 2);
   });
 
-  it("compresses the photo to at most 2048px before sending", async () => {
+  it("compresses the photo to at most 2560px before sending", async () => {
     let longest = 0;
     fashnStub({
       output: async (person) => {
@@ -288,7 +288,7 @@ describe("FASHN Try-On Max", () => {
       },
     });
     await new FashnVirtualTryOnProvider("k", fast).tryOn(await tryOnInput(3000, 4000));
-    expect(longest).toBeLessThanOrEqual(2048);
+    expect(longest).toBeLessThanOrEqual(2560);
   });
 
   it("maps a moderation failure to content_rejected without retrying", async () => {

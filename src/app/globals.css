@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f6f4f0;
+  --paper-2: #ece8e1;
+  --ink: #111111;
+  --ink-2: #3d3a36;
+  --muted: #6f6a63;
+  --line: #ddd7cd;
+  --gold: #a9834b;
+  --gold-soft: #e9dcc5;
+  --night: #0d0e10;
+  --night-2: #17181c;
+  --success: #2f6b3f;
+  --danger: #a33a2c;
+  --warning: #9a6a12;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-night: var(--night);
+  --color-night-2: var(--night-2);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-sans-face), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-display-face), ui-serif, Georgia, "Times New Roman", serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+    @apply btn bg-ink text-paper hover:bg-ink-2;
+}
+
+@utility btn-gold {
+    @apply btn bg-gold text-white hover:brightness-110;
+}
+
+@utility btn-ghost {
+    @apply btn border border-line bg-white/60 text-ink hover:bg-white;
+}
+
+@utility btn-danger {
+    @apply btn bg-danger text-white hover:brightness-110;
+}
+
+@utility btn-sm {
+    @apply px-3.5 py-1.5 text-xs;
+}
+
+@utility card {
+    @apply rounded-2xl border border-line bg-white;
+}
+
+@utility input {
+    @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-muted/70 focus:border-gold focus:outline-none;
+}
+
+@utility label {
+    @apply mb-1.5 block text-xs font-medium tracking-wide text-ink-2 uppercase;
+}
+
+@utility eyebrow {
+    @apply text-[11px] font-semibold tracking-[0.22em] text-gold uppercase;
+}
+
+@utility chip {
+    @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

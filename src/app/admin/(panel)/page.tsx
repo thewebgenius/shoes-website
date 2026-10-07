@@ -23,10 +23,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/admin">) {
       <h1 className="font-display text-3xl font-semibold">Welcome back, {user.name.split(" ")[0]}</h1>
       <p className="mt-1 text-sm text-muted">Last {stats.days} days</p>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/admin/products?status=pending_review" className="card p-5 hover:ring-1 hover:ring-ink/20">
           <p className="text-sm text-muted">Awaiting your approval</p>
           <p className="font-display mt-1 text-3xl font-semibold">{byStatus.pending_review ?? 0}</p>
+        </Link>
+        <Link href="/admin/products?status=approved" className="card p-5 hover:ring-1 hover:ring-ink/20">
+          <p className="text-sm text-muted">Approved, not yet published</p>
+          <p className="font-display mt-1 text-3xl font-semibold">{byStatus.approved ?? 0}</p>
         </Link>
         <Link href="/admin/reviews" className="card p-5 hover:ring-1 hover:ring-ink/20">
           <p className="text-sm text-muted">Reviews to moderate</p>

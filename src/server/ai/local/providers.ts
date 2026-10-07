@@ -1,22 +1,27 @@
 import sharp from "sharp";
 import {
   CONFIDENCE_THRESHOLD,
-  ProviderUnavailableError,
   type EmbeddingProvider,
   type EnhancementResult,
   type ImageEnhancementProvider,
   type MetadataSuggestion,
   type MetadataSuggestionProvider,
-  type ThreeDGenerationProvider,
+  type ModerationProvider,
   type TryOnInput,
   type VirtualTryOnProvider,
 } from "../types";
+import { screenReview } from "../../security/moderation";
 import { composeOnCanvas, cutoutFromSegmentation, dominantColours, segment } from "./image-ops";
 
 /**
- * Local development providers. None of these call an AI model; they use
- * classical image processing so the full workflow runs offline. Each one is
- * flagged isMock = true and the UI says so.
+ * Local providers. None of these call an AI model.
+ *
+ *  - The *development mocks* (image, metadata, try-on) exist so the workflow can
+ *    be exercised offline. They are used only when explicitly configured with
+ *    `*_PROVIDER=mock`, and in production builds only with AI_ALLOW_MOCK_PROVIDERS=true.
+ *    Every result they produce is labelled "Development mock (not AI)".
+ *  - The embedding and moderation providers are plain algorithms (colour/shape
+ *    features, word rules). They are labelled as such, never as AI.
  */
 
 // ---------------------------------------------------------------------------
@@ -25,8 +30,10 @@ import { composeOnCanvas, cutoutFromSegmentation, dominantColours, segment } fro
 
 export class LocalImageEnhancementProvider implements ImageEnhancementProvider {
   readonly id = "local-basic-v1";
-  readonly label = "Local basic processor (development, not AI)";
+  readonly label = "Development mock (not AI): classical background removal";
+  readonly kind = "mock" as const;
   readonly isMock = true;
+  readonly configured = true;
 
   async enhance(input: Buffer): Promise<EnhancementResult> {
     const warnings: string[] = [];
@@ -61,10 +68,12 @@ export class LocalImageEnhancementProvider implements ImageEnhancementProvider {
 
 export class LocalMetadataProvider implements MetadataSuggestionProvider {
   readonly id = "local-heuristic-v1";
-  readonly label = "Local heuristics (development, not AI)";
+  readonly label = "Development mock (not AI): colour and silhouette heuristics";
+  readonly kind = "mock" as const;
   readonly isMock = true;
+  readonly configured = true;
 
-  async suggest(cutout: Buffer): Promise<MetadataSuggestion> {
+  async suggest({ cutout }: { cutout: Buffer }): Promise<MetadataSuggestion> {
     const colours = await dominantColours(cutout);
     const [first, second] = colours;
     let color: MetadataSuggestion["color"] = { value: null, confidence: 0, reason: "No dominant colour found." };
@@ -97,6 +106,9 @@ export class LocalMetadataProvider implements MetadataSuggestionProvider {
         confidence: Math.min(color.confidence, shoeType.confidence, CONFIDENCE_THRESHOLD - 0.01),
         reason: "Draft only. Please write the real description.",
       },
+      brand: { value: null, confidence: 0 },
+      model: { value: null, confidence: 0 },
+      needsVerification: true,
     };
   }
 }
@@ -129,8 +141,10 @@ function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
 
 export class LocalFeatureEmbeddingProvider implements EmbeddingProvider {
   readonly id = "local-features-v1";
-  readonly label = "Local colour/shape features (development, not AI)";
+  readonly label = "Colour and shape similarity (local algorithm, not AI)";
+  readonly kind = "algorithm" as const;
   readonly isMock = true;
+  readonly configured = true;
   readonly model = "local-features-v1";
   readonly dimensions = 512;
 
@@ -211,30 +225,16 @@ export class LocalFeatureEmbeddingProvider implements EmbeddingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// 3D generation: not available in MVP (Phase 2)
-// ---------------------------------------------------------------------------
-
-export class MockThreeDGenerationProvider implements ThreeDGenerationProvider {
-  readonly id = "mock-3d-unavailable";
-  readonly label = "Automatic photo-to-3D (Phase 2, not configured)";
-  readonly isMock = true;
-  readonly available = false;
-  readonly unavailableReason =
-    "Automatic 3D reconstruction from photos is not part of the MVP. Upload a GLB model or assign a sample model instead.";
-
-  async generate(): Promise<never> {
-    throw new ProviderUnavailableError(this.unavailableReason);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Virtual try-on: development mock that composites the catalogue cutout
 // ---------------------------------------------------------------------------
 
 export class MockVirtualTryOnProvider implements VirtualTryOnProvider {
   readonly id = "mock-tryon-composite-v1";
-  readonly label = "Development mock (simple overlay, no try-on model configured)";
+  readonly label = "Development mock (not AI): catalogue photo overlaid where you placed it";
+  readonly kind = "mock" as const;
   readonly isMock = true;
+  readonly configured = true;
+  readonly usesPlacement = true;
 
   async tryOn({ personImage, productImage, placement }: TryOnInput) {
     const base = sharp(personImage).rotate().resize(1080, 1440, { fit: "inside", withoutEnlargement: false });
@@ -264,7 +264,7 @@ export class MockVirtualTryOnProvider implements VirtualTryOnProvider {
       `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Math.round(H * 0.075)}">
         <rect width="100%" height="100%" fill="rgba(17,17,17,0.72)"/>
         <text x="50%" y="62%" text-anchor="middle" font-family="sans-serif" font-size="${Math.round(W * 0.028)}" fill="#fff">
-          AI-generated visual preview · DEVELOPMENT MOCK (overlay only)
+          DEVELOPMENT MOCK · NOT AI · overlay only
         </text></svg>`,
     );
     const image = await sharp(baseBuf)
@@ -276,5 +276,21 @@ export class MockVirtualTryOnProvider implements VirtualTryOnProvider {
       .jpeg({ quality: 85 })
       .toBuffer();
     return { image };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Review moderation: explainable word and link rules (not AI)
+// ---------------------------------------------------------------------------
+
+export class LocalRulesModerationProvider implements ModerationProvider {
+  readonly id = "local-rules-v1";
+  readonly label = "Word and link rules (local, not AI)";
+  readonly kind = "algorithm" as const;
+  readonly isMock = false;
+  readonly configured = true;
+
+  async screen(input: { displayName: string; body: string }) {
+    return screenReview(input);
   }
 }

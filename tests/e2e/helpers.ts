@@ -1,6 +1,7 @@
 import path from "node:path";
 import sharp from "sharp";
 import { expect, type Page } from "@playwright/test";
+import { Pool } from "pg";
 
 export const FIX = (name: string) => path.resolve(__dirname, "../../test-results/fixtures", name);
 export const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "owner@stridehaus.test";
@@ -43,4 +44,11 @@ export async function expectNotPublic(page: Page, slug: string, name: string) {
   expect(html).toContain('name="robots" content="noindex"');
   expect(html).not.toContain(name);
   expect(html).toMatch(/not found|couldn.t find/i);
+}
+
+/** Try-on is rate limited per visitor; tests reset the counters so runs are independent. */
+export async function resetTryOnLimits() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  await pool.query("delete from rate_limits where key like 'tryon%'");
+  await pool.end();
 }

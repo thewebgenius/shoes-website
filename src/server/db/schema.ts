@@ -36,6 +36,7 @@ export const productGender = pgEnum("product_gender", ["male", "female", "unisex
 export const productStatus = pgEnum("product_status", [
   "draft",
   "pending_review",
+  "approved",
   "published",
   "rejected",
   "unpublished",
@@ -45,8 +46,13 @@ export const imageKind = pgEnum("image_kind", ["raw", "processed", "cutout"]);
 export const modelSource = pgEnum("model_source", ["admin_upload", "ai_generated", "sample_library"]);
 export const reviewStatus = pgEnum("review_status", ["pending", "approved", "rejected", "spam"]);
 export const jobType = pgEnum("ai_job_type", ["image_enhancement", "metadata_suggestion", "three_d_generation", "embedding"]);
-export const jobStatus = pgEnum("ai_job_status", ["queued", "running", "succeeded", "failed", "unavailable"]);
-export const tryonStatus = pgEnum("tryon_status", ["processing", "completed", "failed", "expired", "deleted"]);
+/**
+ * "running" is shown as Processing and "succeeded" as Completed. "unavailable"
+ * means the provider is not configured; "needs_review" means the AI finished
+ * but flagged something a person must check.
+ */
+export const jobStatus = pgEnum("ai_job_status", ["queued", "running", "retrying", "succeeded", "needs_review", "failed", "unavailable"]);
+export const tryonStatus = pgEnum("tryon_status", ["queued", "processing", "retrying", "completed", "failed", "expired", "deleted"]);
 export const analyticsEventType = pgEnum("analytics_event_type", [
   "product_view",
   "model_interaction",
@@ -105,6 +111,11 @@ export const products = pgTable(
     shoeType: text("shoe_type"),
     brand: text("brand"),
     color: text("color"),
+    /** Other visible colours, comma separated. */
+    secondaryColors: text("secondary_colors"),
+    style: text("style"),
+    /** Manufacturer model name, only when the shopkeeper confirms it. */
+    modelName: text("model_name"),
     description: text("description"),
     status: productStatus("status").notNull().default("draft"),
     /** True once a person confirmed the (possibly AI-suggested) metadata. */
@@ -131,6 +142,8 @@ export const productImages = pgTable(
     /** For processed/cutout images: the raw upload they were derived from. */
     sourceImageId: uuid("source_image_id"),
     storageKey: text("storage_key").notNull(),
+    /** SHA-256 of the uploaded bytes, so the same photo is never processed (and billed) twice. */
+    contentHash: text("content_hash"),
     mimeType: text("mime_type").notNull(),
     width: integer("width").notNull(),
     height: integer("height").notNull(),
@@ -146,6 +159,7 @@ export const productImages = pgTable(
   },
   (t) => [
     index("product_images_product_idx").on(t.productId),
+    index("product_images_hash_idx").on(t.productId, t.contentHash),
     index("product_images_embedding_idx").using("hnsw", t.embedding.op("vector_cosine_ops")),
   ],
 );
@@ -229,6 +243,7 @@ export const aiProcessingJobs = pgTable(
     outputImageId: uuid("output_image_id"),
     provider: text("provider").notNull(),
     isMock: boolean("is_mock").notNull().default(false),
+    attempts: integer("attempts").notNull().default(0),
     result: jsonb("result"),
     error: text("error"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -239,11 +254,33 @@ export const aiProcessingJobs = pgTable(
   (t) => [index("ai_jobs_product_idx").on(t.productId)],
 );
 
-/** One row per try-on request. The customer photo itself is never stored. */
+/**
+ * A customer photo kept for one try-on visit so they can try several shoes
+ * without uploading again. Encrypted at rest under a random key, readable only
+ * with the token in the visitor's HttpOnly cookie, and deleted at expiresAt.
+ */
+export const tryonPhotos = pgTable(
+  "tryon_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storageKey: text("storage_key"),
+    accessTokenHash: text("access_token_hash"),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    ipHash: text("ip_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("tryon_photos_expires_idx").on(t.expiresAt)],
+);
+
+/** One row per try-on generation. */
 export const tryonSessions = pgTable(
   "tryon_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    photoId: uuid("photo_id").references(() => tryonPhotos.id, { onDelete: "set null" }),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
     status: tryonStatus("status").notNull().default("processing"),
     provider: text("provider").notNull(),
@@ -254,11 +291,12 @@ export const tryonSessions = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
     ipHash: text("ip_hash"),
     durationMs: integer("duration_ms"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("tryon_expires_idx").on(t.expiresAt)],
+  (t) => [index("tryon_expires_idx").on(t.expiresAt), index("tryon_photo_product_idx").on(t.photoId, t.productId)],
 );
 
 /** One row per visual search. The uploaded photo is never stored. */

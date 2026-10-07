@@ -1,8 +1,9 @@
 import { Check } from "lucide-react";
 
 export const TRANSITION_MESSAGES = {
-  submit: "Sent for approval. Review the preview, then approve & publish.",
-  approve: "Approved and published. The shoe is now live in the showroom.",
+  submit: "Sent for review. Check the preview, then approve.",
+  approve: "Approved. It is not live yet: press Publish when you are ready.",
+  publish: "Published. The shoe is now live in the showroom.",
   reject: "Rejected. The product is hidden and marked for changes.",
   unpublish: "Unpublished. The shoe is no longer visible to customers.",
   archive: "Archived. The product is hidden everywhere.",

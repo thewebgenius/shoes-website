@@ -73,6 +73,32 @@ test.describe("security", () => {
     void browser;
   });
 
+  test("try-on photos and previews need the uploader's cookie", async ({ request, browser }) => {
+    test.skip(test.info().project.name !== "desktop", "runs once");
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    await pool.query("delete from rate_limits where key like 'tryon%'");
+    // Upload as one visitor…
+    const up = await request.post("/api/try-on/photo", {
+      headers: ORIGIN,
+      multipart: { consent: "yes", photo: { name: "p.jpg", mimeType: "image/jpeg", buffer: fs.readFileSync(FIX("person.jpg")) } },
+    });
+    expect(up.status()).toBe(200);
+    expect((await request.get("/api/try-on/photo/image")).status()).toBe(200);
+    // …another browser can't read it.
+    const other = await browser.newContext();
+    expect((await other.request.get("/api/try-on/photo/image")).status()).toBe(404);
+    expect((await other.request.post("/api/try-on", { headers: ORIGIN, data: { productId: "00000000-0000-4000-8000-000000000000" } })).status()).toBe(410);
+    await other.close();
+    // The stored file is encrypted, not a readable JPEG.
+    const row = await pool.query("select storage_key from tryon_photos where deleted_at is null order by created_at desc limit 1");
+    await pool.end();
+    expect(row.rows[0].storage_key).toMatch(/^private\/tryon-photos\/[A-Za-z0-9_x-]+\.enc$/);
+    const stored = fs.readFileSync(`${process.env.STORAGE_DIR ?? "./storage"}/${row.rows[0].storage_key}`);
+    expect(stored.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))).toBe(false);
+    expect((await request.delete("/api/try-on/photo", { headers: ORIGIN })).status()).toBe(204);
+    expect((await request.get("/api/try-on/photo/image")).status()).toBe(404);
+  });
+
   test("security headers are present", async ({ request }) => {
     const res = await request.get("/");
     const h = res.headers();
@@ -100,14 +126,14 @@ test.describe("security", () => {
   test("try-on is rate limited", async ({ request }) => {
     test.skip(test.info().project.name !== "desktop", "runs once");
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    await pool.query("delete from rate_limits where key like 'tryon:%'");
+    await pool.query("delete from rate_limits where key like 'tryon%'");
     let last = 0;
     for (let i = 0; i < 11; i++) {
-      const r = await request.post("/api/try-on", { headers: ORIGIN, multipart: { productId: "not-a-uuid", consent: "yes" } });
+      const r = await request.post("/api/try-on", { headers: ORIGIN, data: { productId: "not-a-uuid" } });
       last = r.status();
     }
     expect(last).toBe(429);
-    await pool.query("delete from rate_limits where key like 'tryon:%'");
+    await pool.query("delete from rate_limits where key like 'tryon%'");
     await pool.end();
   });
 });

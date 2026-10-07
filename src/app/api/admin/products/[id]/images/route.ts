@@ -7,7 +7,7 @@ import { validateImageUpload } from "@/server/security/upload";
 import { uploadAndProcessRawImage } from "@/server/services/product-admin";
 import { handleApiError, readFormFile } from "@/server/http";
 
-/** Upload a raw shoe photo; runs background removal → enhancement → crop/resize → embedding → metadata suggestion. */
+/** Upload a raw shoe photo and queue AI processing (background removal → metadata suggestion → embedding). Returns before processing finishes. */
 export async function POST(req: Request, ctx: RouteContext<"/api/admin/products/[id]/images">) {
   try {
     if (!checkOrigin(req, { requireOrigin: true })) return jsonError(403, "Forbidden");
@@ -19,7 +19,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/admin/products/
     const { file } = await readFormFile(req, "image", env().MAX_IMAGE_UPLOAD_MB * 1024 * 1024);
     const image = await validateImageUpload(file);
     const result = await uploadAndProcessRawImage(id, image, user);
-    return Response.json(result, { status: result.ok ? 201 : 207 });
+    return Response.json(result, { status: result.ok ? ("queued" in result ? 202 : 200) : 207 });
   } catch (e) {
     return handleApiError(e);
   }

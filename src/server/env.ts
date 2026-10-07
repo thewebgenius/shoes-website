@@ -6,6 +6,10 @@ const bool = z
   .optional()
   .transform((v) => v === "true" || v === "1");
 
+/** Treats an empty value (`FOO=` in an env file) as unset. */
+const opt = <T extends z.ZodType>(t: T) => z.preprocess((v) => (v === "" ? undefined : v), t);
+const choice = <const V extends readonly [string, ...string[]]>(values: V, fallback: V[number]) => opt(z.enum(values).default(fallback as never));
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   DATABASE_URL: z.string().url(),
@@ -16,24 +20,31 @@ const schema = z.object({
   HTTPS: bool,
   TRUST_PROXY: bool,
 
-  IMAGE_ENHANCEMENT_PROVIDER: z.enum(["local", "http"]).default("local"),
+  // AI providers. Unset = "none" = "AI provider not configured". "local" is the old name for "mock".
+  IMAGE_ENHANCEMENT_PROVIDER: choice(["none", "photoroom", "http", "mock", "local"], "none"),
   IMAGE_ENHANCEMENT_API_URL: z.string().optional(),
   IMAGE_ENHANCEMENT_API_KEY: z.string().optional(),
-  METADATA_PROVIDER: z.enum(["local", "http"]).default("local"),
+  METADATA_PROVIDER: choice(["none", "anthropic", "http", "mock", "local"], "none"),
+  METADATA_MODEL: opt(z.string().regex(/^[\w.-]{1,80}$/).default("claude-sonnet-5-5")),
   METADATA_API_URL: z.string().optional(),
   METADATA_API_KEY: z.string().optional(),
-  THREE_D_PROVIDER: z.enum(["mock", "http"]).default("mock"),
+  THREE_D_PROVIDER: choice(["none", "http", "mock"], "none"),
   THREE_D_API_URL: z.string().optional(),
   THREE_D_API_KEY: z.string().optional(),
-  TRYON_PROVIDER: z.enum(["mock", "http"]).default("mock"),
+  TRYON_PROVIDER: choice(["none", "fashn", "http", "mock"], "none"),
   TRYON_API_URL: z.string().optional(),
+  VIRTUAL_TRYON_API_KEY: z.string().optional(),
+  /** Older name for VIRTUAL_TRYON_API_KEY. */
   TRYON_API_KEY: z.string().optional(),
-  EMBEDDING_PROVIDER: z.enum(["local", "http"]).default("local"),
+  EMBEDDING_PROVIDER: choice(["local", "http"], "local"),
   EMBEDDING_API_URL: z.string().optional(),
   EMBEDDING_API_KEY: z.string().optional(),
+  /** Development mocks are refused in production builds unless this is true (used by the E2E suite). */
+  AI_ALLOW_MOCK_PROVIDERS: bool,
 
   MAX_IMAGE_UPLOAD_MB: z.coerce.number().positive().max(50).default(10),
   MAX_MODEL_UPLOAD_MB: z.coerce.number().positive().max(100).default(25),
+  /** How long a try-on photo and its previews are kept before automatic deletion. */
   TRYON_RESULT_TTL_MINUTES: z.coerce.number().int().positive().max(24 * 60).default(30),
 });
 

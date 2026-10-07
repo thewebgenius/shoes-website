@@ -30,6 +30,16 @@ export default async function globalSetup() {
       .jpeg()
       .toBuffer(),
   );
+  // Three framings for try-on: feet only (landscape), lower body, full body (tall).
+  for (const [name, w, h] of [["feet-only.jpg", 1600, 900], ["lower-body.jpg", 1000, 1400], ["full-body.jpg", 800, 1800]] as const) {
+    fs.writeFileSync(
+      path.join(FIXTURES, name),
+      await sharp({ create: { width: w, height: h, channels: 3, background: "#9aa7ad" } })
+        .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect y="${Math.round(h * 0.8)}" width="${w}" height="${Math.round(h * 0.2)}" fill="#6b5b4b"/></svg>`), left: 0, top: 0 }])
+        .jpeg()
+        .toBuffer(),
+    );
+  }
   fs.writeFileSync(path.join(FIXTURES, "not-an-image.jpg"), Buffer.from("<?php echo 'hi'; ?>"));
   fs.copyFileSync(path.resolve(__dirname, "../../seed-assets/models/kids-high-lime.glb"), path.join(FIXTURES, "model.glb"));
   fs.writeFileSync(path.join(FIXTURES, "fake.glb"), Buffer.concat([Buffer.from("glTF"), Buffer.alloc(40)]));

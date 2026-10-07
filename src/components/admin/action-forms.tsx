@@ -30,7 +30,7 @@ export function TransitionButton({
 }: {
   id: string;
   from?: "edit" | "preview";
-  action: "submit" | "approve" | "unpublish" | "archive" | "restore" | "edit";
+  action: "submit" | "approve" | "publish" | "unpublish" | "archive" | "restore" | "edit";
   label: string;
   variant?: "primary" | "ghost" | "gold" | "danger";
   confirm?: string;
@@ -85,10 +85,27 @@ export function RejectForm({ id }: { id: string }) {
   );
 }
 
-export function SampleModelPicker({ id, samples }: { id: string; samples: Array<{ id: string; label: string; style: string; license: string }> }) {
+export function SampleModelPicker({
+  id,
+  samples,
+  isRealProduct,
+}: {
+  id: string;
+  samples: Array<{ id: string; label: string; style: string; license: string }>;
+  isRealProduct: boolean;
+}) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(assignSampleAction, null);
   return (
-    <form action={formAction}>
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        const msg =
+          "This is a generic SAMPLE 3D model for development, not a scan of this shoe." +
+          (isRealProduct ? " This looks like a real product: customers would see a different shoe in 3D (labelled “Studio sample 3D model”)." : "") +
+          " Attach it anyway?";
+        if (!window.confirm(msg)) e.preventDefault();
+      }}
+    >
       <input type="hidden" name="id" value={id} />
       <label htmlFor="sample" className="label">
         Or assign a sample model (development)
@@ -108,7 +125,7 @@ export function SampleModelPicker({ id, samples }: { id: string; samples: Array<
           {pending ? "Assigning…" : "Assign"}
         </button>
       </div>
-      <p className="mt-1 text-xs text-muted">Shown to customers as “Studio sample 3D model”, never as a scan of this exact shoe.</p>
+      <p className="mt-1 text-xs text-warning">Development only. A sample is a different shoe; customers see it labelled “Studio sample 3D model”, never as this exact shoe.</p>
       <Feedback state={state} />
     </form>
   );
@@ -128,14 +145,14 @@ export function GenerateModelButton({ id, available, reason }: { id: string; ava
   );
 }
 
-export function ReprocessButton({ id, rawId }: { id: string; rawId: string }) {
+export function ReprocessButton({ id, rawId, label = "Retry processing" }: { id: string; rawId: string; label?: string }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(reprocessImageAction, null);
   return (
     <form action={formAction}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="rawId" value={rawId} />
       <button type="submit" className="text-xs font-medium text-gold hover:underline disabled:opacity-50" disabled={pending}>
-        {pending ? "Processing…" : "Re-run processing"}
+        {pending ? "Starting…" : label}
       </button>
       <Feedback state={state} />
     </form>

@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
 import { products, reviews, reviewVotes } from "../db/schema";
-import { screenReview } from "../security/moderation";
+import { aiProviders } from "../ai/registry";
 import { LIMITS, rateLimit } from "../security/rate-limit";
 import { signPayload, verifyPayload } from "../security/crypto";
 import { audit } from "../security/audit";
@@ -58,7 +58,7 @@ export async function submitReview(raw: Record<string, unknown>, ipHash: string)
   const tooFast = !token || token.p !== input.productId || Date.now() - token.t < MIN_FILL_SECONDS * 1000;
   const honeypot = input.website.trim().length > 0;
 
-  const screen = screenReview({ displayName: input.displayName, body: input.body });
+  const screen = await aiProviders().moderation.screen({ displayName: input.displayName, body: input.body });
   const flags = [...screen.flags];
   if (tooFast) flags.push(token ? "submitted_too_fast" : "invalid_form_token");
   if (honeypot) flags.push("honeypot");

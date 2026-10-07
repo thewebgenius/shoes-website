@@ -1,8 +1,9 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
 import {
@@ -14,7 +15,10 @@ import {
   type ProductStatus,
 } from "../db/schema";
 import { aiProviders } from "../ai/registry";
-import { ProviderUnavailableError } from "../ai/types";
+import { runInBackground } from "../background";
+import { toProviderError } from "../ai/errors";
+import { withRetry } from "../ai/resilience";
+import type { MetadataSuggestion } from "../ai/types";
 import { storage, storageKeys } from "../storage";
 import { audit } from "../security/audit";
 import { inspectGlb, UploadError, type ValidatedImage, type ValidatedModel } from "../security/upload";
@@ -50,6 +54,9 @@ export const productInputSchema = z.object({
   shoeType: text(60).nullish().transform((v) => v || null),
   brand: text(60).nullish().transform((v) => v || null),
   color: text(60).nullish().transform((v) => v || null),
+  secondaryColors: text(120).nullish().transform((v) => v || null),
+  style: text(60).nullish().transform((v) => v || null),
+  modelName: text(80).nullish().transform((v) => v || null),
   description: text(2000).nullish().transform((v) => v || null),
   metadataVerified: z.boolean().default(false),
 });
@@ -108,6 +115,7 @@ export async function getProductForAdmin(id: string) {
   if (!z.string().uuid().safeParse(id).success) return null;
   const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1);
   if (!product) return null;
+  await reapStaleJobs(id);
   const images = await db.select().from(productImages).where(eq(productImages.productId, id)).orderBy(desc(productImages.createdAt));
   const models = await db.select().from(product3dAssets).where(eq(product3dAssets.productId, id)).orderBy(desc(product3dAssets.createdAt));
   const jobs = await db.select().from(aiProcessingJobs).where(eq(aiProcessingJobs.productId, id)).orderBy(desc(aiProcessingJobs.createdAt)).limit(20);
@@ -153,7 +161,7 @@ export async function updateProduct(id: string, input: ProductInput, actor: Sess
   if (data.name !== product.name && product.status !== "published") changes.slug = await uniqueSlug(data.name, id);
   // Changing a product that is waiting for approval sends it back to draft so
   // the approver always sees what they approve.
-  if (product.status === "pending_review" || product.status === "rejected") changes.status = "draft";
+  if (product.status === "pending_review" || product.status === "rejected" || product.status === "approved") changes.status = "draft";
   const [row] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
   const diff = Object.fromEntries(
     Object.entries(data).filter(([k, v]) => (product as Record<string, unknown>)[k] !== v),
@@ -166,16 +174,22 @@ export async function updateProduct(id: string, input: ProductInput, actor: Sess
 // Status workflow
 // ---------------------------------------------------------------------------
 
-type Transition = "submit" | "approve" | "reject" | "unpublish" | "archive" | "restore" | "edit";
+/**
+ * Lifecycle: draft → (photo processing → AI ready) → pending_review ("Needs review")
+ * → approved → published. Approving and publishing are separate, deliberate
+ * steps; nothing is ever published automatically.
+ */
+export type Transition = "submit" | "approve" | "publish" | "reject" | "unpublish" | "archive" | "restore" | "edit";
 
 const ALLOWED: Record<Transition, ProductStatus[]> = {
   submit: ["draft", "rejected", "unpublished"],
   approve: ["pending_review"],
-  reject: ["pending_review"],
+  publish: ["approved"],
+  reject: ["pending_review", "approved"],
   unpublish: ["published"],
-  archive: ["draft", "pending_review", "rejected", "unpublished", "published"],
+  archive: ["draft", "pending_review", "approved", "rejected", "unpublished", "published"],
   restore: ["archived"],
-  edit: ["pending_review", "rejected", "unpublished"],
+  edit: ["pending_review", "approved", "rejected", "unpublished"],
 };
 
 export async function transition(id: string, action: Transition, actor: SessionUser, opts: { reason?: string } = {}) {
@@ -190,6 +204,10 @@ export async function transition(id: string, action: Transition, actor: SessionU
       changes = { status: "pending_review", rejectionReason: null };
       break;
     case "approve":
+      if (!ready.ready) throw new WorkflowError(`Cannot approve yet: missing ${ready.missing.join(", ")}.`);
+      changes = { status: "approved", rejectionReason: null };
+      break;
+    case "publish":
       if (!ready.ready) throw new WorkflowError(`Cannot publish yet: missing ${ready.missing.join(", ")}.`);
       changes = { status: "published", publishedAt: new Date(), publishedBy: actor.id, rejectionReason: null };
       break;
@@ -227,12 +245,41 @@ async function storeProcessed(productId: string, imageId: string, processed: Buf
 }
 
 export type ProcessOutcome =
-  | { ok: true; processedImageId: string; warnings: string[]; isMock: boolean; provider: string }
-  | { ok: false; error: string; rawImageId: string };
+  | { ok: true; queued: true; jobId: string; rawImageId: string }
+  | { ok: true; duplicate: true; rawImageId: string; message: string }
+  | { ok: false; notConfigured?: boolean; error: string; rawImageId: string };
+
+/** Jobs still "active" after this long were interrupted (e.g. a server restart). */
+const STALE_JOB_MINUTES = 15;
+const ACTIVE: Array<"queued" | "running" | "retrying"> = ["queued", "running", "retrying"];
+
+export async function reapStaleJobs(productId: string) {
+  await db
+    .update(aiProcessingJobs)
+    .set({ status: "failed", error: "Interrupted before it finished (the server restarted). Use Retry processing.", finishedAt: new Date() })
+    .where(
+      and(
+        eq(aiProcessingJobs.productId, productId),
+        inArray(aiProcessingJobs.status, ACTIVE),
+        lt(aiProcessingJobs.createdAt, new Date(Date.now() - STALE_JOB_MINUTES * 60_000)),
+      ),
+    );
+}
 
 export async function uploadAndProcessRawImage(productId: string, image: ValidatedImage, actor: SessionUser): Promise<ProcessOutcome> {
   const { product } = await loadOrThrow(productId);
   if (product.status === "archived") throw new WorkflowError("Restore the product before uploading images.");
+
+  // Cost control: the same photo is never stored or sent to the AI provider twice for one shoe.
+  const contentHash = createHash("sha256").update(image.buffer).digest("hex");
+  const [dupe] = await db
+    .select({ id: productImages.id })
+    .from(productImages)
+    .where(and(eq(productImages.productId, productId), eq(productImages.kind, "raw"), eq(productImages.contentHash, contentHash)))
+    .limit(1);
+  if (dupe) {
+    return { ok: true, duplicate: true, rawImageId: dupe.id, message: "This photo is already uploaded for this shoe, so it was not processed or charged again. Use Retry processing on it if needed." };
+  }
 
   const [raw] = await db
     .insert(productImages)
@@ -240,12 +287,14 @@ export async function uploadAndProcessRawImage(productId: string, image: Validat
       productId,
       kind: "raw",
       storageKey: "pending",
+      contentHash,
       mimeType: image.mime,
       width: image.width,
       height: image.height,
       bytes: image.buffer.length,
     })
     .returning();
+  // The original is stored privately under its own key and never overwritten.
   const rawKey = storageKeys.rawImage(productId, raw.id);
   await storage().put(rawKey, image.buffer);
   await db.update(productImages).set({ storageKey: rawKey }).where(eq(productImages.id, raw.id));
@@ -254,10 +303,13 @@ export async function uploadAndProcessRawImage(productId: string, image: Validat
   return processRawImage(productId, raw.id, actor);
 }
 
-/** Runs (or re-runs) the enhancement pipeline for a stored raw image. Failures are recorded, never thrown. */
+/**
+ * Queues (or re-queues) AI processing of a stored raw photo and returns at
+ * once. The job record carries the status the admin page shows:
+ * queued → running → (retrying) → succeeded | needs_review | failed | unavailable.
+ */
 export async function processRawImage(productId: string, rawImageId: string, actor: SessionUser): Promise<ProcessOutcome> {
-  const providers = aiProviders();
-  const provider = providers.imageEnhancement;
+  const provider = aiProviders().imageEnhancement;
   const [raw] = await db
     .select()
     .from(productImages)
@@ -265,21 +317,56 @@ export async function processRawImage(productId: string, rawImageId: string, act
     .limit(1);
   if (!raw) throw new WorkflowError("Raw image not found.", 404);
 
+  await reapStaleJobs(productId);
+  const [active] = await db
+    .select({ id: aiProcessingJobs.id })
+    .from(aiProcessingJobs)
+    .where(and(eq(aiProcessingJobs.inputImageId, raw.id), eq(aiProcessingJobs.type, "image_enhancement"), inArray(aiProcessingJobs.status, ACTIVE)))
+    .limit(1);
+  if (active) throw new WorkflowError("This photo is already being processed.", 409);
+
+  if (!provider.configured) {
+    await db.insert(aiProcessingJobs).values({
+      type: "image_enhancement",
+      status: "unavailable",
+      productId,
+      inputImageId: raw.id,
+      provider: provider.id,
+      isMock: provider.isMock,
+      createdBy: actor.id,
+      error: `AI provider not configured. ${provider.notConfiguredReason ?? ""}`.trim(),
+      finishedAt: new Date(),
+    });
+    return { ok: false, notConfigured: true, error: "AI provider not configured. The original photo is saved; processing will work once a provider is set up.", rawImageId: raw.id };
+  }
+
   const [job] = await db
     .insert(aiProcessingJobs)
-    .values({ type: "image_enhancement", status: "running", productId, inputImageId: raw.id, provider: provider.id, isMock: provider.isMock, createdBy: actor.id, startedAt: new Date() })
+    .values({ type: "image_enhancement", status: "queued", productId, inputImageId: raw.id, provider: provider.id, isMock: provider.isMock, createdBy: actor.id })
     .returning();
+  runInBackground(() => runImageJob(job.id, productId, raw.id, raw.storageKey, actor));
+  return { ok: true, queued: true, jobId: job.id, rawImageId: raw.id };
+}
 
+async function runImageJob(jobId: string, productId: string, rawImageId: string, rawKey: string, actor: SessionUser) {
+  const provider = aiProviders().imageEnhancement;
+  const setJob = (v: Partial<typeof aiProcessingJobs.$inferInsert>) => db.update(aiProcessingJobs).set(v).where(eq(aiProcessingJobs.id, jobId));
+  await setJob({ status: "running", startedAt: new Date(), attempts: 1 });
   try {
-    const input = await storage().get(raw.storageKey);
-    const result = await provider.enhance(input);
+    const input = await storage().get(rawKey);
+    const result = await withRetry("image_enhancement", provider.id, () => provider.enhance(input), {
+      onRetry: async (attempt, e) => {
+        await setJob({ status: "retrying", attempts: attempt + 1, error: e.userMessage });
+      },
+    });
+    await setJob({ status: "running", error: null });
     const meta = await sharp(result.processed).metadata();
     const [processed] = await db
       .insert(productImages)
       .values({
         productId,
         kind: "processed",
-        sourceImageId: raw.id,
+        sourceImageId: rawImageId,
         storageKey: storageKeys.productImage(productId, "pending", 1200),
         mimeType: "image/webp",
         width: meta.width ?? 1200,
@@ -290,31 +377,27 @@ export async function processRawImage(productId: string, rawImageId: string, act
       })
       .returning();
     await storeProcessed(productId, processed.id, result.processed);
-    const cutoutKey = storageKeys.cutout(productId, processed.id);
-    await storage().put(cutoutKey, result.cutout);
+    await storage().put(storageKeys.cutout(productId, processed.id), result.cutout);
     await db
       .update(productImages)
       .set({ storageKey: storageKeys.productImage(productId, processed.id, 1200) })
       .where(eq(productImages.id, processed.id));
     await setPrimaryImage(productId, processed.id);
-    await db
-      .update(aiProcessingJobs)
-      .set({ status: "succeeded", outputImageId: processed.id, finishedAt: new Date(), result: { steps: result.steps, warnings: result.warnings } })
-      .where(eq(aiProcessingJobs.id, job.id));
+    await setJob({ status: "succeeded", outputImageId: processed.id, finishedAt: new Date(), result: { steps: result.steps, warnings: result.warnings } });
 
-    // Follow-on jobs. Their failure must not undo the processed image.
-    await embedImage(productId, processed.id, result.cutout, actor).catch((e) => console.error("[embedding]", e));
-    await suggestMetadata(productId, result.cutout, actor).catch((e) => console.error("[metadata]", e));
+    // Follow-on jobs. Their failure never undoes the processed image.
+    await embedImage(productId, processed.id, result.cutout, actor).catch(() => undefined);
+    const suggestion = await suggestMetadata(productId, result.cutout, actor, input);
 
-    return { ok: true, processedImageId: processed.id, warnings: result.warnings, isMock: provider.isMock, provider: provider.label };
-  } catch (e) {
-    const message = e instanceof ProviderUnavailableError ? e.message : "Image processing failed. The original photo is kept; you can retry.";
-    console.error("[image_enhancement]", e);
-    await db
-      .update(aiProcessingJobs)
-      .set({ status: e instanceof ProviderUnavailableError ? "unavailable" : "failed", error: String((e as Error).message ?? e).slice(0, 500), finishedAt: new Date() })
-      .where(eq(aiProcessingJobs.id, job.id));
-    return { ok: false, error: message, rawImageId: raw.id };
+    // The vision model also checks the cutout against the original photo.
+    const issues = suggestion?.cutoutIssues ?? [];
+    const warnings = [...result.warnings, ...issues.map((i) => `AI check: ${i}`)];
+    if (warnings.length) {
+      await setJob({ status: "needs_review", result: { steps: result.steps, warnings } });
+    }
+  } catch (raw) {
+    const e = toProviderError(provider.id, raw);
+    await setJob({ status: e.code === "not_configured" ? "unavailable" : "failed", error: e.message.slice(0, 500), finishedAt: new Date() });
   }
 }
 
@@ -332,40 +415,62 @@ export async function embedImage(productId: string, imageId: string, cutout: Buf
   const provider = aiProviders().embedding;
   const [job] = await db
     .insert(aiProcessingJobs)
-    .values({ type: "embedding", status: "running", productId, inputImageId: imageId, provider: provider.id, isMock: provider.isMock, createdBy: actor?.id, startedAt: new Date() })
+    .values({ type: "embedding", status: "running", productId, inputImageId: imageId, provider: provider.id, isMock: provider.isMock, createdBy: actor?.id, startedAt: new Date(), attempts: 1 })
     .returning();
   try {
     const vector = await provider.embed(cutout);
     await db.update(productImages).set({ embedding: vector, embeddingModel: provider.model }).where(eq(productImages.id, imageId));
     await db.update(aiProcessingJobs).set({ status: "succeeded", finishedAt: new Date() }).where(eq(aiProcessingJobs.id, job.id));
-  } catch (e) {
-    await db
-      .update(aiProcessingJobs)
-      .set({ status: "failed", error: String((e as Error).message).slice(0, 500), finishedAt: new Date() })
-      .where(eq(aiProcessingJobs.id, job.id));
+  } catch (raw) {
+    const e = toProviderError(provider.id, raw);
+    await db.update(aiProcessingJobs).set({ status: "failed", error: e.message.slice(0, 500), finishedAt: new Date() }).where(eq(aiProcessingJobs.id, job.id));
     throw e;
   }
 }
 
-export async function suggestMetadata(productId: string, cutout: Buffer, actor: SessionUser) {
+/**
+ * Asks the metadata provider for suggestions and stores them for the
+ * shopkeeper to review. Returns null when not configured or on failure (both
+ * recorded as jobs); never throws, never publishes.
+ */
+export async function suggestMetadata(productId: string, cutout: Buffer, actor: SessionUser, original?: Buffer): Promise<MetadataSuggestion | null> {
   const provider = aiProviders().metadata;
+  if (!provider.configured) {
+    await db.insert(aiProcessingJobs).values({
+      type: "metadata_suggestion",
+      status: "unavailable",
+      productId,
+      provider: provider.id,
+      isMock: provider.isMock,
+      createdBy: actor.id,
+      error: `AI provider not configured. ${provider.notConfiguredReason ?? ""}`.trim(),
+      finishedAt: new Date(),
+    });
+    return null;
+  }
   const [job] = await db
     .insert(aiProcessingJobs)
-    .values({ type: "metadata_suggestion", status: "running", productId, provider: provider.id, isMock: provider.isMock, createdBy: actor.id, startedAt: new Date() })
+    .values({ type: "metadata_suggestion", status: "running", productId, provider: provider.id, isMock: provider.isMock, createdBy: actor.id, startedAt: new Date(), attempts: 1 })
     .returning();
   try {
-    const suggestion = await provider.suggest(cutout);
+    const suggestion = await withRetry("metadata", provider.id, () => provider.suggest({ cutout, original }), {
+      onRetry: async (attempt, e) => {
+        await db.update(aiProcessingJobs).set({ status: "retrying", attempts: attempt + 1, error: e.userMessage }).where(eq(aiProcessingJobs.id, job.id));
+      },
+    });
     await db
       .update(products)
-      .set({ aiSuggestions: { ...suggestion, provider: provider.label, isMock: provider.isMock, at: new Date().toISOString() } })
+      .set({ aiSuggestions: { ...suggestion, provider: provider.label, providerKind: provider.kind, isMock: provider.isMock, at: new Date().toISOString() } })
       .where(eq(products.id, productId));
-    await db.update(aiProcessingJobs).set({ status: "succeeded", result: suggestion, finishedAt: new Date() }).where(eq(aiProcessingJobs.id, job.id));
-  } catch (e) {
+    await db.update(aiProcessingJobs).set({ status: "succeeded", error: null, result: suggestion, finishedAt: new Date() }).where(eq(aiProcessingJobs.id, job.id));
+    return suggestion;
+  } catch (raw) {
+    const e = toProviderError(provider.id, raw);
     await db
       .update(aiProcessingJobs)
-      .set({ status: "failed", error: String((e as Error).message).slice(0, 500), finishedAt: new Date() })
+      .set({ status: e.code === "not_configured" ? "unavailable" : "failed", error: e.message.slice(0, 500), finishedAt: new Date() })
       .where(eq(aiProcessingJobs.id, job.id));
-    throw e;
+    return null;
   }
 }
 

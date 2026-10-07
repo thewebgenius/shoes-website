@@ -12,7 +12,7 @@ const STYLES: Record<string, string> = {
 
 export const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
-  pending_review: "Awaiting approval",
+  pending_review: "Needs review",
   published: "Published",
   rejected: "Rejected",
   unpublished: "Unpublished",

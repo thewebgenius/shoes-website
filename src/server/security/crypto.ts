@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "../env";
 
 export function randomToken(bytes = 32) {
@@ -38,4 +38,22 @@ export function verifyPayload<T extends Record<string, unknown>>(token: string |
   } catch {
     return null;
   }
+}
+
+function fileKey() {
+  return Buffer.from(hkdfSync("sha256", env().APP_SECRET, "stridehaus", "private-file-encryption-v1", 32));
+}
+
+/** AES-256-GCM for private files at rest (customer try-on photos and previews). Layout: iv | tag | ciphertext. */
+export function encryptBuffer(plain: Buffer): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", fileKey(), iv);
+  const body = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]);
+}
+
+export function decryptBuffer(data: Buffer): Buffer {
+  const decipher = createDecipheriv("aes-256-gcm", fileKey(), data.subarray(0, 12));
+  decipher.setAuthTag(data.subarray(12, 28));
+  return Buffer.concat([decipher.update(data.subarray(28)), decipher.final()]);
 }

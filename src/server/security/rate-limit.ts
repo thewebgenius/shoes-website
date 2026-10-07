@@ -10,6 +10,7 @@ export const LIMITS = {
   review: { limit: 3, windowSeconds: 60 * 60 },
   reviewVote: { limit: 30, windowSeconds: 60 * 60 },
   tryon: { limit: 10, windowSeconds: 60 * 60 },
+  tryonPhoto: { limit: 20, windowSeconds: 60 * 60 },
   visualSearch: { limit: 30, windowSeconds: 60 * 60 },
   analytics: { limit: 300, windowSeconds: 60 * 60 },
   adminUpload: { limit: 120, windowSeconds: 60 * 60 },

@@ -58,6 +58,13 @@ export default async function PreviewPage({ params, searchParams }: PageProps<"/
               <div className="flex size-full items-center justify-center text-sm text-danger">Missing product image</div>
             )}
           </div>
+          {primaryImage?.sourceImageId && (
+            <figure className="flex items-center gap-3 text-xs text-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element -- private original, admin only */}
+              <img src={`/api/media/image/${primaryImage.sourceImageId}/raw`} alt="Original photo" className="size-20 rounded-xl bg-white object-contain ring-1 ring-line" />
+              <figcaption>Original photo (private). Compare it with the processed image above: same shoe, nothing missing, nothing extra.</figcaption>
+            </figure>
+          )}
           <dl className="card grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 p-5 text-sm">
             <dt className="text-muted">Category</dt>
             <dd className="capitalize">{p.category}</dd>
@@ -67,8 +74,14 @@ export default async function PreviewPage({ params, searchParams }: PageProps<"/
             <dd>{p.shoeType ?? "—"}</dd>
             <dt className="text-muted">Colour</dt>
             <dd>{p.color ?? "—"}</dd>
+            <dt className="text-muted">Other colours</dt>
+            <dd>{p.secondaryColors ?? "—"}</dd>
+            <dt className="text-muted">Style</dt>
+            <dd>{p.style ?? "—"}</dd>
             <dt className="text-muted">Brand</dt>
             <dd>{p.brand ?? "—"}</dd>
+            <dt className="text-muted">Model</dt>
+            <dd>{p.modelName ?? "—"}</dd>
             <dt className="text-muted">Status</dt>
             <dd>
               <StatusBadge status={p.status} />
@@ -107,7 +120,13 @@ export default async function PreviewPage({ params, searchParams }: PageProps<"/
           </Link>
           {p.status === "pending_review" && canPublish && (
             <>
-              <TransitionButton id={p.id} action="approve" label="Approve & publish" variant="gold" from="preview" />
+              <TransitionButton id={p.id} action="approve" label="Approve" variant="gold" from="preview" />
+              <RejectForm id={p.id} />
+            </>
+          )}
+          {p.status === "approved" && canPublish && (
+            <>
+              <TransitionButton id={p.id} action="publish" label="Publish" variant="gold" from="preview" confirm="Publish this shoe? It will be visible to customers." />
               <RejectForm id={p.id} />
             </>
           )}

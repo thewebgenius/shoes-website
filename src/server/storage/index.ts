@@ -91,5 +91,7 @@ export const storageKeys = {
   productImage: (productId: string, imageId: string, variant: number | "full") => `catalog/${productId}/images/${imageId}/${variant}.webp`,
   cutout: (productId: string, imageId: string) => `catalog/${productId}/images/${imageId}/cutout.png`,
   model: (productId: string, assetId: string) => `catalog/${productId}/models/${assetId}.glb`,
-  tryonResult: (sessionId: string) => `private/tryon/${sessionId}.jpg`,
+  tryonResult: (sessionId: string) => `private/tryon/${sessionId}.jpg.enc`,
+  /** Random name, unrelated to any id, so a leaked key reveals nothing. */
+  tryonPhoto: (randomName: string) => `private/tryon-photos/${randomName}.enc`,
 };

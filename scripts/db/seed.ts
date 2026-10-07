@@ -1,8 +1,9 @@
 /**
  * Seeds the database with an owner account and a sample catalogue built from
- * the 3D models in seed-assets/. Every product goes through the same image
- * pipeline (background removal → enhancement → crop/resize → embedding) that
- * the admin workflow uses. Safe to re-run: existing seed products are skipped.
+ * the 3D models in seed-assets/. The seed images are clean studio renders, so
+ * they are prepared with the local (non-AI) processor; no AI provider or API
+ * key is needed and none is charged. Shopkeeper uploads use the configured AI
+ * provider instead. Safe to re-run: existing seed products are skipped.
  *
  * Usage: npm run db:seed
  */
@@ -14,7 +15,7 @@ import { db } from "../../src/server/db/client";
 import { products, productImages, reviews, users } from "../../src/server/db/schema";
 import { hashPassword, passwordProblems } from "../../src/server/auth/password";
 import { storage, storageKeys } from "../../src/server/storage";
-import { aiProviders } from "../../src/server/ai/registry";
+import { LocalImageEnhancementProvider } from "../../src/server/ai/local/providers";
 import { assignSampleModel, embedImage, setPrimaryImage, slugify } from "../../src/server/services/product-admin";
 import sharp from "sharp";
 
@@ -84,7 +85,7 @@ async function ensureOwner() {
 async function main() {
   const owner = await ensureOwner();
   const actor = { id: owner.id, email: owner.email, name: owner.name, role: owner.role };
-  const providers = aiProviders();
+  const seedProcessor = new LocalImageEnhancementProvider();
   const imagesDir = path.resolve(__dirname, "../../seed-assets/images");
 
   for (const [n, s] of CATALOG.entries()) {
@@ -123,7 +124,7 @@ async function main() {
       await storage().put(rawKey, rawBuf);
       await db.update(productImages).set({ storageKey: rawKey }).where(eq(productImages.id, raw.id));
 
-      const result = await providers.imageEnhancement.enhance(rawBuf);
+      const result = await seedProcessor.enhance(rawBuf);
       const [img] = await db
         .insert(productImages)
         .values({
@@ -136,7 +137,7 @@ async function main() {
           height: 1200,
           bytes: result.processed.length,
           variants: [400, 800, 1200],
-          processingProvider: providers.imageEnhancement.id,
+          processingProvider: `seed:${seedProcessor.id}`,
           altText: `${s.name} – ${s.color} ${s.shoeType.toLowerCase()}${i ? ", side view" : ""}`,
         })
         .returning();

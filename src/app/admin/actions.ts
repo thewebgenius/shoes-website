@@ -115,6 +115,9 @@ function productFromForm(form: FormData) {
     shoeType: String(form.get("shoeType") ?? ""),
     brand: String(form.get("brand") ?? ""),
     color: String(form.get("color") ?? ""),
+    secondaryColors: String(form.get("secondaryColors") ?? ""),
+    style: String(form.get("style") ?? ""),
+    modelName: String(form.get("modelName") ?? ""),
     description: String(form.get("description") ?? ""),
     metadataVerified: form.get("metadataVerified") === "on",
   };
@@ -165,7 +168,7 @@ export async function updateProductAction(_prev: ActionState, form: FormData): P
 
 const transitionSchema = z.object({
   id: z.string().uuid(),
-  action: z.enum(["submit", "approve", "reject", "unpublish", "archive", "restore", "edit"]),
+  action: z.enum(["submit", "approve", "publish", "reject", "unpublish", "archive", "restore", "edit"]),
   reason: z.string().max(500).optional(),
 });
 
@@ -173,7 +176,7 @@ export async function transitionAction(_prev: ActionState, form: FormData): Prom
   const parsed = transitionSchema.safeParse({ id: form.get("id"), action: form.get("action"), reason: form.get("reason") ?? undefined });
   if (!parsed.success) return { error: "Invalid request." };
   const { id, action, reason } = parsed.data;
-  const user = await requireUser(action === "approve" || action === "unpublish" ? "products:publish" : "products:write");
+  const user = await requireUser(action === "approve" || action === "publish" || action === "unpublish" ? "products:publish" : "products:write");
   try {
     await transition(id, action, user, { reason });
   } catch (e) {
@@ -215,7 +218,7 @@ export async function reprocessImageAction(_prev: ActionState, form: FormData): 
   try {
     const result = await processRawImage(id, rawId, user);
     refresh();
-    return result.ok ? { ok: true, message: "Image processed again." } : { error: result.error };
+    return result.ok ? { ok: true, message: "Processing started." } : { error: result.error };
   } catch (e) {
     return toState(e);
   }

@@ -25,13 +25,10 @@ export function RawImageUploader({ productId, maxMb }: { productId: string; maxM
     setMsg(null);
     try {
       const { res, data } = await post(`/api/admin/products/${productId}/images`, "image", file);
-      if (!res.ok && res.status !== 207) setMsg({ kind: "err", text: data.error ?? "Upload failed." });
-      else if (!data.ok) setMsg({ kind: "warn", text: data.error ?? "Processing failed; the raw photo was kept." });
-      else
-        setMsg({
-          kind: data.warnings?.length ? "warn" : "ok",
-          text: data.warnings?.length ? `Processed with warnings: ${data.warnings.join(" ")}` : "Photo processed: background removed, enhanced, cropped and resized.",
-        });
+      if (!res.ok && res.status !== 202 && res.status !== 207) setMsg({ kind: "err", text: data.error ?? "Upload failed." });
+      else if (data.duplicate) setMsg({ kind: "warn", text: data.message });
+      else if (!data.ok) setMsg({ kind: "warn", text: data.error ?? "Processing could not start; the original photo was kept." });
+      else setMsg({ kind: "ok", text: "Photo uploaded. AI processing has started; the status below updates by itself." });
       router.refresh();
     } catch {
       setMsg({ kind: "err", text: "Network error during upload." });
@@ -45,7 +42,7 @@ export function RawImageUploader({ productId, maxMb }: { productId: string; maxM
     <div>
       <button type="button" className="btn-primary" disabled={busy} onClick={() => input.current?.click()}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
-        {busy ? "Uploading & processing…" : "Upload raw photo"}
+        {busy ? "Uploading…" : "Upload shoe photo"}
       </button>
       <input
         ref={input}
@@ -56,7 +53,7 @@ export function RawImageUploader({ productId, maxMb }: { productId: string; maxM
         data-testid="raw-image-input"
         onChange={(e) => upload(e.target.files?.[0])}
       />
-      <p className="mt-2 text-xs text-muted">JPEG, PNG, WebP or HEIC, up to {maxMb} MB. A plain background gives the cleanest result.</p>
+      <p className="mt-2 text-xs text-muted">JPEG, PNG, WebP or HEIC, up to {maxMb} MB. The original is kept privately and never changed.</p>
       {msg && (
         <p
           role="status"

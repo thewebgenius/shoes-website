@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Move } from "lucide-react";
 
 export type Placement = { x: number; y: number; scale: number };
@@ -10,19 +10,17 @@ export const DEFAULT_PLACEMENT: Placement = { x: 0.5, y: 0.88, scale: 0.42 };
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 
 /**
- * Lets the customer say where the shoe goes before the preview is generated.
- * Without a try-on model that finds feet by itself, a fixed position lands the
- * shoe wherever the photo happens to be cropped, so the person placing it is
- * the one who knows where their feet are.
+ * Development mock only: lets the customer say where the overlay goes. Real
+ * try-on models find the feet themselves, so this step is hidden for them.
  */
 export function PlaceShoe({
-  photo,
+  photoUrl,
   shoeImageId,
   shoeName,
   placement,
   onChange,
 }: {
-  photo: File;
+  photoUrl: string;
   shoeImageId: string | null;
   shoeName: string;
   placement: Placement;
@@ -30,9 +28,6 @@ export function PlaceShoe({
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
-  const photoUrl = useMemo(() => URL.createObjectURL(photo), [photo]);
-
-  useEffect(() => () => URL.revokeObjectURL(photoUrl), [photoUrl]);
 
   const moveTo = useCallback(
     (clientX: number, clientY: number) => {
@@ -73,7 +68,7 @@ export function PlaceShoe({
           moveTo(e.clientX, e.clientY);
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- local object URL, never uploaded until Generate */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- the visitor's own photo */}
         <img src={photoUrl} alt="Your photo" className="pointer-events-none size-full object-contain" draggable={false} />
         {shoeImageId && (
           <button

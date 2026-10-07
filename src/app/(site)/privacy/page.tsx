@@ -30,13 +30,16 @@ export default function PrivacyPage() {
 
       <h2 id="try-on">Try-On Lab photos</h2>
       <ul>
-        <li>Your photo is used only to generate your preview. It is processed in memory and is never written to our storage or database.</li>
-        <li>It is not shared through any public link and is never used to train AI models.</li>
+        <li>Your photo is used only to generate try-on previews for you during your visit, so you can try several shoes without uploading again.</li>
         <li>
-          The generated preview is stored privately for a short time so you can view it, readable only by the browser that created it, and is deleted
-          automatically after it expires or immediately when you choose “Delete now”.
+          It is stored encrypted under a random name, readable only by the browser that uploaded it, and deleted automatically when your visit’s time limit runs out
+          (or immediately when you choose “Delete my photo now”). Previews made from it are deleted with it.
         </li>
-        <li>If an external AI provider is connected, your photo is sent to it over an encrypted connection with instructions not to retain it or use it for training.</li>
+        <li>It is never published, never shared through a public link, never written to our logs and never used to train AI models.</li>
+        <li>
+          To create a preview, the photo is sent over an encrypted connection to our virtual try-on provider (FASHN), inside the request rather than as a link. The
+          provider deletes the input when the request finishes and does not use it for training.
+        </li>
         <li>We do not measure feet, estimate size or perform any biometric or medical analysis.</li>
       </ul>
 
@@ -45,7 +48,7 @@ export default function PrivacyPage() {
 
       <h2>Cookies</h2>
       <p>
-        We set no cookies for ordinary visitors, apart from a short-lived, HttpOnly cookie that lets your browser view your own try-on preview. Staff who sign in
+        We set no cookies for ordinary visitors, apart from a short-lived, HttpOnly cookie that lets your browser use your own try-on photo and previews. Staff who sign in
         receive a secure session cookie.
       </p>
 
